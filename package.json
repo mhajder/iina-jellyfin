@@ -1,0 +1,28 @@
+{
+  "name": "iina-jellyfin",
+  "description": "Jellyfin plugin for IINA, enabling seamless media playback and subtitle management.",
+  "homepage": "https://github.com/mhajder/iina-jellyfin",
+  "bugs": {
+    "url": "https://github.com/mhajder/iina-jellyfin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mhajder/iina-jellyfin.git"
+  },
+  "license": "GPL-3.0-only",
+  "author": "Mateusz Hajder",
+  "type": "module",
+  "scripts": {
+    "format": "prettier --check src/",
+    "format:fix": "prettier --write src/",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/",
+    "check": "eslint src/ && prettier --check src/"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "eslint": "^9.35.0",
+    "iina-plugin-definition": "^0.99.3",
+    "prettier": "^3.6.2"
+  }
+}

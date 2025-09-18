@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Jellyfin Plugin Help</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        padding: 16px;
+        margin: 0;
+        font-size: 13px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+          Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.5;
+      }
+
+      h1 {
+        font-size: 18px;
+        margin-bottom: 16px;
+      }
+
+      h2 {
+        font-size: 16px;
+        margin: 20px 0 10px 0;
+        padding-bottom: 5px;
+      }
+
+      p {
+        margin: 0 0 12px 0;
+      }
+
+      ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      li {
+        margin-bottom: 4px;
+      }
+
+      code {
+        border-radius: 3px;
+        padding: 2px 4px;
+        font-family:
+          "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+          "Courier New", monospace;
+        font-size: 12px;
+      }
+
+      .section {
+        margin-bottom: 24px;
+      }
+
+      .small {
+        font-size: 11px;
+      }
+
+      .note {
+        border-radius: 4px;
+        padding: 12px;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="section">
+      <h2>Jellyfin Browser Sidebar</h2>
+      <p>
+        Use the <strong>"Show Jellyfin Browser"</strong> menu item (Cmd+Shift+J)
+        or the sidebar to browse your Jellyfin server, search for media, and
+        play URLs for playback directly in IINA.
+      </p>
+      <p>Key features:</p>
+      <ul>
+        <li>Direct media streaming from Jellyfin server</li>
+        <li>Browser-style interface for finding movies and TV shows</li>
+        <li>Automatic subtitle downloads with language preferences</li>
+        <li>Simple login/logout workflow</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Getting Started</h2>
+      <p>
+        <strong>First Time Setup:</strong>
+      </p>
+      <ol>
+        <li>
+          Open IINA and go to
+          <strong>Plugins → Show Jellyfin Browser</strong> (or press
+          <strong>Cmd+Shift+J</strong>)
+        </li>
+        <li>Click <strong>Connect</strong> to add your server</li>
+        <li>
+          Enter your Jellyfin server URL (e.g., http://192.168.1.100:8096)
+        </li>
+        <li>Enter your username and password</li>
+        <li>Click <strong>Login</strong> to connect</li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <h2>Media Playback Workflow</h2>
+      <p>
+        The plugin provides direct media playback from the Jellyfin sidebar:
+      </p>
+      <ol>
+        <li>Browse your recent items or search for content</li>
+        <li>Click on a movie or episode</li>
+        <li>The media opens directly in IINA with full video and audio</li>
+        <li>Use preferences to choose between current window or new window</li>
+      </ol>
+
+      <div class="note">
+        <strong>New Window Mode:</strong> Enable "Open media in new IINA window"
+        in preferences to open each video in a separate window. This allows you
+        to continue browsing while watching.
+      </div>
+
+      <div class="note">
+        <strong>Logout:</strong> Click the <strong>Logout</strong> button to
+        disconnect. You'll need to enter your server details again to reconnect.
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Automatic Subtitle Downloads</h2>
+      <p>
+        The plugin automatically detects Jellyfin URLs and can download
+        subtitles when enabled:
+      </p>
+      <ul>
+        <li>
+          Jellyfin download URLs containing <code>/Items/</code> and
+          <code>api_key=</code>
+        </li>
+        <li>URLs containing "jellyfin", "/Audio/", or "/Videos/"</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Manual Actions</h2>
+      <p>Available from the IINA menu bar:</p>
+      <ul>
+        <li>
+          <strong>Download Jellyfin Subtitles:</strong> Manually download
+          subtitles for the current media
+        </li>
+        <li>
+          <strong>Set Jellyfin Title:</strong> Set the video title from Jellyfin
+          metadata
+        </li>
+        <li>
+          <strong>Show Jellyfin Browser:</strong> Open the sidebar media browser
+          (Cmd+Shift+J)
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

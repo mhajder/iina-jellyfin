@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jellyfin Browser</title>
+    <link rel="stylesheet" href="sidebar.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 8px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+        background: #1e1e1e;
+        color: #ffffff;
+        overflow-x: hidden;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* Server Management Section */
+      .server-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 12px;
+        background: #2a2a2a;
+      }
+
+      .section-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+
+      .server-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .server-select {
+        background: #3a3a3a;
+        border: 1px solid #555;
+        border-radius: 4px;
+        color: #ffffff;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+
+      .server-status {
+        font-size: 11px;
+        color: #888;
+        margin-top: 4px;
+      }
+
+      .server-status.connected {
+        color: #4ade80;
+      }
+
+      .server-status.error {
+        color: #ef4444;
+      }
+
+      /* Login Section */
+      .login-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 12px;
+        background: #2a2a2a;
+      }
+
+      .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .input-label {
+        font-size: 11px;
+        color: #ccc;
+        font-weight: 500;
+      }
+
+      .text-input {
+        background: #3a3a3a;
+        border: 1px solid #555;
+        border-radius: 4px;
+        color: #ffffff;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+
+      .text-input:focus {
+        outline: none;
+        border-color: #0066cc;
+      }
+
+      .button {
+        background: #0066cc;
+        border: none;
+        border-radius: 4px;
+        color: #ffffff;
+        padding: 8px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        font-weight: 500;
+      }
+
+      .button:hover {
+        background: #0052a3;
+      }
+
+      .button.danger {
+        background: #dc3545;
+      }
+
+      .button.danger:hover {
+        background: #c82333;
+      }
+
+      .button.danger:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+      }
+
+      .button:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+
+      .button.secondary {
+        background: #555;
+      }
+
+      .button.secondary:hover {
+        background: #666;
+      }
+
+      /* Search Section */
+      .search-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 12px;
+        background: #2a2a2a;
+      }
+
+      .search-input {
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      /* Media List Section */
+      .media-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 12px;
+        background: #2a2a2a;
+        flex: 1;
+      }
+
+      .media-list {
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .media-item {
+        display: flex;
+        flex-direction: column;
+        padding: 8px;
+        border: 1px solid #444;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        background: #333;
+      }
+
+      .media-item:hover {
+        background: #3a3a3a;
+        border-color: #555;
+      }
+
+      .media-item.selected {
+        background: #0066cc;
+        border-color: #0066cc;
+      }
+
+      .media-title {
+        font-weight: 500;
+        font-size: 12px;
+        margin-bottom: 2px;
+      }
+
+      .media-subtitle {
+        font-size: 11px;
+        color: #aaa;
+        margin-bottom: 4px;
+      }
+
+      .media-meta {
+        font-size: 10px;
+        color: #888;
+      }
+
+      /* Episode Selection */
+      .episode-section {
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 12px;
+        background: #2a2a2a;
+        display: none;
+      }
+
+      .season-select {
+        margin-bottom: 8px;
+      }
+
+      .episode-list {
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .episode-item {
+        padding: 6px 8px;
+        border: 1px solid #444;
+        border-radius: 4px;
+        margin-bottom: 4px;
+        cursor: pointer;
+        background: #333;
+        font-size: 11px;
+      }
+
+      .episode-item:hover {
+        background: #3a3a3a;
+      }
+
+      .episode-item.selected {
+        background: #0066cc;
+      }
+
+      /* Tab Navigation */
+      .tab-nav {
+        display: flex;
+        margin-bottom: 12px;
+        border-bottom: 1px solid #333;
+      }
+
+      .tab-button {
+        background: none;
+        border: none;
+        color: #888;
+        padding: 8px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        border-bottom: 2px solid transparent;
+      }
+
+      .tab-button.active {
+        color: #ffffff;
+        border-bottom-color: #0066cc;
+      }
+
+      .tab-content {
+        display: none;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      /* Loading and Error States */
+      .loading {
+        text-align: center;
+        color: #888;
+        padding: 20px;
+        font-size: 12px;
+      }
+
+      .error {
+        color: #ef4444;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .empty-state {
+        text-align: center;
+        color: #888;
+        padding: 20px;
+        font-size: 12px;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #2a2a2a;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Server Connection -->
+      <div class="server-section">
+        <div class="section-title">Jellyfin Server</div>
+        <div class="server-controls">
+          <div id="serverStatus" class="server-status">Not connected</div>
+          <div style="display: flex; gap: 8px; margin-top: 8px">
+            <button id="connectBtn" class="button primary">Connect</button>
+            <button
+              id="logoutBtn"
+              class="button secondary"
+              style="display: none"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Login Section -->
+      <div id="loginSection" class="login-section" style="display: none">
+        <div class="section-title">Login to Jellyfin</div>
+        <div class="login-form">
+          <div class="input-group">
+            <label class="input-label" for="serverUrl">Server URL</label>
+            <input
+              type="text"
+              id="serverUrl"
+              class="text-input"
+              placeholder="http://your-server:8096"
+            />
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="username">Username</label>
+            <input
+              type="text"
+              id="username"
+              class="text-input"
+              placeholder="Your username"
+            />
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              class="text-input"
+              placeholder="Your password"
+            />
+          </div>
+          <div id="loginError" class="error"></div>
+          <button id="loginBtn" class="button">Login</button>
+          <button id="cancelLoginBtn" class="button secondary">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Main Content Tabs -->
+      <div id="mainContent" style="display: none">
+        <div class="tab-nav">
+          <button class="tab-button active" data-tab="recent">Recent</button>
+          <button class="tab-button" data-tab="search">Search</button>
+        </div>
+
+        <!-- Recent Items Tab -->
+        <div id="recentTab" class="tab-content active">
+          <div class="media-section">
+            <div class="section-title">Recently Added</div>
+            <div id="recentList" class="media-list">
+              <div class="loading">Loading recent items...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="searchTab" class="tab-content">
+          <div class="search-section">
+            <div class="section-title">Search</div>
+            <input
+              type="text"
+              id="searchInput"
+              class="text-input search-input"
+              placeholder="Search for movies, shows..."
+            />
+          </div>
+          <div class="media-section">
+            <div id="searchResults" class="media-list">
+              <div class="empty-state">Enter a search term above</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Episode Selection -->
+      <div id="episodeSection" class="episode-section">
+        <div class="section-title">Select Episode</div>
+        <div class="input-group">
+          <label class="input-label">Season</label>
+          <select id="seasonSelect" class="server-select season-select">
+            <option value="">Loading seasons...</option>
+          </select>
+        </div>
+        <div id="episodeList" class="episode-list">
+          <div class="loading">Select a season</div>
+        </div>
+        <button id="playEpisodeBtn" class="button" disabled>
+          Play Episode
+        </button>
+        <button id="cancelEpisodeBtn" class="button secondary">Back</button>
+      </div>
+    </div>
+
+    <script src="sidebar.js"></script>
+  </body>
+</html>

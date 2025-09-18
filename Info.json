@@ -1,0 +1,33 @@
+{
+  "name": "Jellyfin",
+  "identifier": "com.mhajder.iina-jellyfin",
+  "version": "0.1.0",
+  "description": "Jellyfin plugin for IINA, enabling seamless media playback and subtitle management.",
+  "author": {
+    "name": "Mateusz Hajder",
+    "url": "https://github.com/mhajder"
+  },
+  "entry": "src/index.js",
+  "globalEntry": "src/global.js",
+  "permissions": [
+    "show-osd",
+    "show-alert",
+    "network-request",
+    "file-system",
+    "sidebar"
+  ],
+  "allowedDomains": ["*"],
+  "preferencesPage": "pref.html",
+  "helpPage": "help.html",
+  "preferenceDefaults": {
+    "auto_download_enabled": true,
+    "preferred_languages": "en,eng",
+    "download_all_subtitles": false,
+    "show_notifications": false,
+    "debug_logging": false,
+    "set_video_title": true,
+    "open_in_new_window": true
+  },
+  "ghRepo": "mhajder/iina-jellyfin",
+  "ghVersion": 1
+}

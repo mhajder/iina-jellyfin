@@ -1,0 +1,141 @@
+/* Additional styling for Jellyfin sidebar */
+
+/* Custom scrollbar for better dark theme integration */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+  border: 1px solid #333;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* Loading animation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loading::before {
+  content: "⏳ ";
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+/* Better focus states for accessibility */
+.text-input:focus,
+.server-select:focus,
+.season-select:focus {
+  outline: 2px solid #0066cc;
+  outline-offset: 1px;
+}
+
+/* Media item hover effects */
+.media-item {
+  transition: all 0.2s ease;
+}
+
+.media-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.2);
+}
+
+/* Button hover effects */
+.button {
+  transition: all 0.2s ease;
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+/* Error state styling */
+.error::before {
+  content: "⚠️ ";
+}
+
+/* Success state styling */
+.server-status.connected::before {
+  content: "✅ ";
+}
+
+/* Connection indicator */
+.server-status.connecting::before {
+  content: "🔄 ";
+  animation: spin 1s linear infinite;
+}
+
+/* Episode list improvements */
+.episode-item {
+  transition: all 0.15s ease;
+}
+
+.episode-item:hover {
+  transform: translateX(4px);
+}
+
+/* Tab button improvements */
+.tab-button {
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Media type badges */
+.media-meta {
+  background: #444;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+/* Empty state improvements */
+.empty-state {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* Form improvements */
+.input-group {
+  position: relative;
+}
+
+.text-input:valid {
+  border-color: #4ade80;
+}
+
+.text-input:invalid:not(:placeholder-shown) {
+  border-color: #ef4444;
+}
+
+/* Responsive improvements for smaller sidebars */
+@media (max-width: 300px) {
+  .server-controls {
+    gap: 6px;
+  }
+
+  .container {
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 12px;
+  }
+}
