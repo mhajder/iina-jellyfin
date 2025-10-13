@@ -58,6 +58,38 @@
   </head>
 
   <body>
+    <div class="section-header">Authentication & Session</div>
+
+    <div class="pref-section">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="auto_login_enabled" />
+        Enable automatic login from Jellyfin URLs
+      </label>
+      <p class="small secondary pref-help">
+        Automatically extract server URL and API key from Jellyfin URLs (like download links) and
+        use them to auto-login to the sidebar browser. This eliminates the need to manually enter
+        credentials when you've already accessed Jellyfin content.
+      </p>
+    </div>
+
+    <div class="pref-section">
+      <label>
+        Session expiration (hours):
+        <input
+          type="number"
+          data-pref-key="session_max_age_hours"
+          min="1"
+          max="168"
+          value="24"
+          style="width: 60px; margin-left: 8px"
+        />
+      </label>
+      <p class="small secondary pref-help">
+        How long to keep stored session data before requiring re-authentication. Default is 24
+        hours, maximum is 168 hours (7 days).
+      </p>
+    </div>
+
     <div class="section-header">Media Playback</div>
 
     <div class="pref-section">

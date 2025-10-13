@@ -20,7 +20,9 @@
     "show_notifications": false,
     "debug_logging": false,
     "set_video_title": true,
-    "open_in_new_window": true
+    "open_in_new_window": true,
+    "auto_login_enabled": true,
+    "session_max_age_hours": 24
   },
   "ghRepo": "mhajder/iina-jellyfin",
   "ghVersion": 1

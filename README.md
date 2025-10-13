@@ -14,7 +14,9 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 
 ### Jellyfin Browser Sidebar
 
-- **Secure authentication**: Login with username/password
+- **Automatic login**: Automatically login using server URL and API key from Jellyfin URLs
+- **Secure authentication**: Login with username/password when auto-login isn't available
+- **Session persistence**: Maintains login across new IINA tabs/windows
 - **Recent items browser**: Browse recently added movies and TV shows
 - **Search functionality**: Search your Jellyfin library for specific content
 - **Series episode selection**: Browse seasons and episodes for TV shows
@@ -47,25 +49,43 @@ The plugin automatically detects and downloads subtitles when you open Jellyfin 
 
 ### Using the Jellyfin Browser
 
+#### Automatic Login (Recommended)
+
+1. First, open any Jellyfin media URL containing an API key (e.g., `http://server:8096/Items/{ItemId}/Download?api_key={key}`)
+2. The plugin automatically extracts and stores your server URL and API key
+3. Open the browser sidebar: View menu → "Show Jellyfin Browser" or press `Cmd+Shift+J`
+4. The sidebar will automatically connect using your stored credentials
+5. Browse recent items or search for specific content and click to play
+
+#### Manual Login
+
 1. Open the browser sidebar: View menu → "Show Jellyfin Browser" or press `Cmd+Shift+J`
-2. Enter your server URL (e.g., `http://192.168.1.100:8096`)
+2. Click "Connect" and enter your server URL (e.g., `http://192.168.1.100:8096`)
 3. Log in with your Jellyfin username and password
-4. Browse recent items or search for specific content
-5. Click any item to play it directly in IINA
+4. Your session will be saved for future auto-login
+5. Browse recent items or search for specific content
+6. Click any item to play it directly in IINA
 
 ## Supported URL Formats
 
 The plugin automatically detects Jellyfin URLs in these formats:
 
-- Download URLs: `http://server:port/Items/{ItemId}/Download?api_key={key}`
-- URLs containing `/Items/` and `api_key=`
+- Download URLs: `http://server:port/Items/{ItemId}/Download?api_key={key}` _(automatically enables sidebar login)_
+- URLs containing `/Items/` and `api_key=` _(automatically enables sidebar login)_
 - URLs containing "jellyfin", "/Audio/", or "/Videos/"
+
+**Note**: URLs with API keys will automatically store authentication data for the sidebar browser, eliminating the need for manual login.
 
 ## Configuration
 
 Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 
-### Settings
+### Authentication & Session Settings
+
+- **Enable automatic login from Jellyfin URLs**: Automatically extract server URL and API key from Jellyfin URLs for seamless login
+- **Session expiration (hours)**: How long to keep stored session data (1-168 hours, default: 24)
+
+### Media Playback Settings
 
 - **Enable automatic subtitle download**: Toggle automatic downloading when opening Jellyfin URLs
 - **Show on-screen notifications**: Display OSD messages when subtitles are downloaded

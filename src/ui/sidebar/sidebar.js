@@ -26,6 +26,7 @@ class JellyfinSidebar {
     this.selectedSeason = null;
     this.selectedEpisode = null;
     this.searchTimeout = null;
+    this.pendingSessionData = null;
 
     this.init();
   }
@@ -80,6 +81,12 @@ class JellyfinSidebar {
   init() {
     this.setupEventListeners();
     this.setupTabNavigation();
+    this.setupMessageHandlers();
+
+    // Request session data from main plugin
+    this.requestSessionData();
+
+    // Show login form initially (will be hidden if auto-login succeeds)
     this.showLoginForm();
   }
 
@@ -126,6 +133,11 @@ class JellyfinSidebar {
         this.login();
       }
     });
+
+    // Clear session button
+    document.getElementById('clearSessionBtn').addEventListener('click', () => {
+      this.clearStoredSession();
+    });
   }
 
   setupTabNavigation() {
@@ -150,6 +162,138 @@ class JellyfinSidebar {
         }
       });
     });
+  }
+
+  setupMessageHandlers() {
+    // Listen for session data from main plugin
+    if (typeof iina !== 'undefined' && iina.onMessage) {
+      iina.onMessage('session-available', (data) => {
+        debugLog('Received session-available message: ' + JSON.stringify(data));
+        this.handleSessionAvailable(data);
+      });
+
+      iina.onMessage('session-data', (data) => {
+        debugLog('Received session-data message: ' + JSON.stringify(data));
+        this.handleSessionData(data);
+      });
+
+      iina.onMessage('session-cleared', () => {
+        debugLog('Received session-cleared message');
+        this.handleSessionCleared();
+      });
+    } else {
+      debugLog('iina.onMessage not available, session auto-login disabled');
+    }
+  }
+
+  requestSessionData() {
+    debugLog('Requesting session data from main plugin');
+    if (typeof iina !== 'undefined' && iina.postMessage) {
+      iina.postMessage('get-session');
+    } else {
+      debugLog('iina.postMessage not available, cannot request session data');
+    }
+  }
+
+  handleSessionAvailable(sessionData) {
+    if (!sessionData || !sessionData.serverUrl || !sessionData.accessToken) {
+      debugLog('Invalid session data received');
+      return;
+    }
+
+    debugLog('Attempting auto-login with session data');
+    this.attemptAutoLogin(sessionData);
+  }
+
+  handleSessionData(sessionData) {
+    if (!sessionData) {
+      debugLog('No stored session data available');
+      return;
+    }
+
+    debugLog('Retrieved stored session data, attempting auto-login');
+    this.attemptAutoLogin(sessionData);
+  }
+
+  handleSessionCleared() {
+    debugLog('Session cleared, logging out if currently logged in');
+    if (this.currentServer) {
+      this.logout();
+    }
+  }
+
+  async attemptAutoLogin(sessionData) {
+    try {
+      debugLog('Attempting auto-login to: ' + sessionData.serverUrl);
+
+      // Update UI to show connecting
+      this.updateServerStatus('Auto-connecting...', 'connecting');
+
+      // Test the stored session by making a simple API call
+      const response = await this.getHttpClient().get(`${sessionData.serverUrl}/System/Info`, {
+        headers: {
+          'X-Emby-Token': sessionData.accessToken,
+        },
+      });
+
+      if (response.status === 200 && response.data) {
+        // Session is valid, get user info
+        const userResponse = await this.getHttpClient().get(`${sessionData.serverUrl}/Users/Me`, {
+          headers: {
+            'X-Emby-Token': sessionData.accessToken,
+          },
+        });
+
+        if (userResponse.status === 200 && userResponse.data) {
+          // Auto-login successful
+          this.currentServer = {
+            name: response.data.ServerName || sessionData.serverUrl,
+            url: sessionData.serverUrl,
+            userId: userResponse.data.Id,
+            accessToken: sessionData.accessToken,
+          };
+
+          this.currentUser = userResponse.data;
+
+          debugLog('Auto-login successful for user: ' + this.currentUser.Name);
+
+          this.hideLoginForm();
+          this.showMainContent();
+          this.showLogoutButton();
+          this.updateServerStatus(`Auto-connected as ${this.currentUser.Name}`, 'connected');
+          this.loadRecentItems();
+
+          return;
+        }
+      }
+    } catch (error) {
+      debugLog('Auto-login failed: ' + error.message);
+    }
+
+    // Auto-login failed, clear session and show login form
+    debugLog('Auto-login failed, clearing stored session');
+    this.clearStoredSession();
+    this.updateServerStatus('Auto-login failed - please login manually', 'error');
+  }
+
+  clearStoredSession() {
+    debugLog('Requesting session clear from main plugin');
+    if (typeof iina !== 'undefined' && iina.postMessage) {
+      iina.postMessage('clear-session');
+    }
+
+    // Also clear local state
+    this.logout();
+  }
+
+  storeSessionData(serverUrl, accessToken) {
+    debugLog('Requesting session storage from main plugin');
+    if (typeof iina !== 'undefined' && iina.postMessage) {
+      iina.postMessage('store-session', {
+        serverUrl: serverUrl,
+        accessToken: accessToken,
+      });
+    }
   }
 
   // Simple logout functionality
@@ -236,6 +380,9 @@ class JellyfinSidebar {
         };
 
         this.currentUser = authResult.user;
+
+        // Store session data for future auto-login
+        this.storeSessionData(normalizedUrl, authResult.accessToken);
 
         this.hideLoginForm();
         this.showMainContent();

@@ -65,6 +65,10 @@
         color: #ef4444;
       }
 
+      .server-status.connecting {
+        color: #f59e0b;
+      }
+
       /* Login Section */
       .login-section {
         border: 1px solid #333;
@@ -327,6 +331,15 @@
           <div style="display: flex; gap: 8px; margin-top: 8px">
             <button id="connectBtn" class="button primary">Connect</button>
             <button id="logoutBtn" class="button secondary" style="display: none">Logout</button>
+          </div>
+          <div style="margin-top: 8px">
+            <button
+              id="clearSessionBtn"
+              class="button danger small"
+              style="font-size: 10px; padding: 4px 8px"
+            >
+              Clear Saved Session
+            </button>
           </div>
         </div>
       </div>

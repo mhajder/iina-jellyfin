@@ -486,6 +486,100 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
 }
 
 /**
+ * Store Jellyfin session data for auto-login
+ */
+function storeJellyfinSession(serverBase, apiKey) {
+  try {
+    if (!preferences.get('auto_login_enabled')) {
+      debugLog('Auto-login disabled, not storing session data');
+      return;
+    }
+
+    debugLog(`Storing Jellyfin session data for: ${serverBase}`);
+
+    // Store session data in preferences
+    preferences.set('jellyfin_session_server', serverBase);
+    preferences.set('jellyfin_session_token', apiKey);
+    preferences.set('jellyfin_session_timestamp', Date.now());
+    preferences.sync();
+
+    debugLog('Jellyfin session data stored successfully');
+
+    // Notify sidebar about available session
+    if (sidebar && sidebar.postMessage) {
+      sidebar.postMessage('session-available', {
+        serverUrl: serverBase,
+        accessToken: apiKey,
+        timestamp: Date.now(),
+      });
+    }
+  } catch (error) {
+    debugLog(`Error storing Jellyfin session: ${error.message}`);
+  }
+}
+
+/**
+ * Clear stored Jellyfin session data
+ */
+function clearJellyfinSession() {
+  try {
+    debugLog('Clearing Jellyfin session data');
+    preferences.set('jellyfin_session_server', '');
+    preferences.set('jellyfin_session_token', '');
+    preferences.set('jellyfin_session_timestamp', 0);
+    preferences.sync();
+
+    // Notify sidebar about cleared session
+    if (sidebar && sidebar.postMessage) {
+      sidebar.postMessage('session-cleared', {});
+    }
+  } catch (error) {
+    debugLog(`Error clearing Jellyfin session: ${error.message}`);
+  }
+}
+
+/**
+ * Get stored Jellyfin session data if valid
+ */
+function getStoredJellyfinSession() {
+  try {
+    if (!preferences.get('auto_login_enabled')) {
+      debugLog('Auto-login disabled, not retrieving session data');
+      return null;
+    }
+
+    const serverUrl = preferences.get('jellyfin_session_server');
+    const accessToken = preferences.get('jellyfin_session_token');
+    const timestamp = preferences.get('jellyfin_session_timestamp') || 0;
+
+    if (!serverUrl || !accessToken) {
+      debugLog('No valid session data found');
+      return null;
+    }
+
+    // Check if session is not too old (24 hours)
+    const maxAge = preferences.get('session_max_age_hours') || 24;
+    const sessionAge = (Date.now() - timestamp) / (1000 * 60 * 60); // hours
+
+    if (sessionAge > maxAge) {
+      debugLog(`Session too old (${sessionAge.toFixed(1)} hours), clearing`);
+      clearJellyfinSession();
+      return null;
+    }
+
+    debugLog(`Retrieved valid session data for: ${serverUrl}`);
+    return {
+      serverUrl,
+      accessToken,
+      timestamp,
+    };
+  } catch (error) {
+    debugLog(`Error retrieving Jellyfin session: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Handle file loaded event
  */
 function onFileLoaded(fileUrl) {
@@ -499,6 +593,9 @@ function onFileLoaded(fileUrl) {
       lastJellyfinUrl = fileUrl;
       lastItemId = jellyfinInfo.itemId;
       debugLog(`Stored Jellyfin media for manual download: ${jellyfinInfo.itemId}`);
+
+      // Store session data for auto-login if enabled
+      storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
 
       // Set video title from metadata if enabled
       if (preferences.get('set_video_title')) {
@@ -760,9 +857,35 @@ event.on('iina.window-loaded', () => {
   // Set up message handler for sidebar playback requests
   sidebar.onMessage('play-media', handlePlayMedia);
 
+  // Handle session requests from sidebar
+  sidebar.onMessage('get-session', () => {
+    const sessionData = getStoredJellyfinSession();
+    sidebar.postMessage('session-data', sessionData);
+  });
+
+  // Handle session clear requests from sidebar
+  sidebar.onMessage('clear-session', () => {
+    clearJellyfinSession();
+  });
+
+  // Handle session storage requests from sidebar (manual login)
+  sidebar.onMessage('store-session', (data) => {
+    if (data && data.serverUrl && data.accessToken) {
+      storeJellyfinSession(data.serverUrl, data.accessToken);
+    }
+  });
+
   // Also expose a global method for sidebar communication
   global.playMedia = (streamUrl, title) => {
     debugLog('Global playMedia called with:', streamUrl, title);
     handlePlayMedia({ streamUrl, title });
   };
+
+  // Send initial session data to sidebar after a brief delay
+  setTimeout(() => {
+    const sessionData = getStoredJellyfinSession();
+    if (sessionData) {
+      sidebar.postMessage('session-available', sessionData);
+    }
+  }, 500);
 });
