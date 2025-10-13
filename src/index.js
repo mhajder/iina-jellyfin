@@ -2,7 +2,19 @@
  * IINA Jellyfin Plugin
  */
 
-const { core, console, menu, event, http, utils, preferences, mpv, sidebar, global } = iina;
+const {
+  core,
+  console,
+  menu,
+  event,
+  http,
+  utils,
+  preferences,
+  mpv,
+  sidebar,
+  global,
+  standaloneWindow,
+} = iina;
 
 // Plugin state
 let lastJellyfinUrl = null;
@@ -746,6 +758,89 @@ function manualSetTitle() {
   setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
 }
 
+/**
+ * Show Jellyfin Browser - handles the case when no window is available
+ */
+function showJellyfinBrowser() {
+  try {
+    debugLog('Attempting to show Jellyfin browser');
+
+    // Try to show sidebar directly first
+    if (sidebar && sidebar.show) {
+      sidebar.show();
+      debugLog('Sidebar shown successfully');
+      return;
+    }
+  } catch (error) {
+    debugLog(`Direct sidebar.show() failed: ${error.message}`);
+
+    // Check if we have stored session data that could be useful
+    const sessionData = getStoredJellyfinSession();
+
+    // Always open in standalone window when sidebar isn't available
+    debugLog('Opening Jellyfin browser in standalone window');
+    openJellyfinStandaloneWindow(sessionData);
+  }
+}
+
+/**
+ * Open Jellyfin browser in a standalone window
+ */
+function openJellyfinStandaloneWindow(sessionData) {
+  try {
+    debugLog('Creating standalone Jellyfin browser window');
+
+    // Load the same sidebar HTML in standalone window
+    standaloneWindow.loadFile('src/ui/sidebar/index.html');
+
+    // Set window properties
+    standaloneWindow.setFrame({ x: 100, y: 100, width: 400, height: 600 });
+    standaloneWindow.setProperty('title', 'Jellyfin Browser');
+    standaloneWindow.setProperty('resizable', true);
+    standaloneWindow.setProperty('minimizable', true);
+
+    // Set up message handlers for standalone window
+    standaloneWindow.onMessage('get-session', () => {
+      standaloneWindow.postMessage('session-data', sessionData);
+    });
+
+    standaloneWindow.onMessage('play-media', (data) => {
+      handlePlayMedia(data);
+      // Close standalone window after starting playback
+      standaloneWindow.close();
+    });
+
+    standaloneWindow.onMessage('clear-session', () => {
+      clearJellyfinSession();
+    });
+
+    standaloneWindow.onMessage('store-session', (data) => {
+      if (data && data.serverUrl && data.accessToken) {
+        storeJellyfinSession(data.serverUrl, data.accessToken);
+      }
+    });
+
+    // Open the window
+    standaloneWindow.open();
+
+    // Send session data after a brief delay
+    setTimeout(() => {
+      standaloneWindow.postMessage('session-available', sessionData);
+    }, 1000);
+
+    debugLog('Standalone Jellyfin browser window opened successfully');
+    if (sessionData) {
+      core.osd(
+        `Jellyfin Browser opened in standalone window\nServer: ${sessionData.serverUrl.replace(/^https?:\/\//, '')}`
+      );
+    } else {
+      core.osd('Jellyfin Browser opened in standalone window\nPlease login to access your media');
+    }
+  } catch (error) {
+    debugLog(`Failed to create standalone window: ${error.message}`);
+  }
+}
+
 // Menu items
 menu.addItem(menu.item('Download Jellyfin Subtitles', manualDownloadSubtitles));
 menu.addItem(menu.item('Set Jellyfin Title', manualSetTitle));
@@ -753,7 +848,7 @@ menu.addItem(
   menu.item(
     'Show Jellyfin Browser',
     () => {
-      sidebar.show();
+      showJellyfinBrowser();
     },
     { keyBinding: 'Cmd+Shift+J' }
   )
