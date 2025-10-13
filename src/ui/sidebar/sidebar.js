@@ -852,6 +852,7 @@ class JellyfinSidebar {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         seasonId: seasonId,
+        fields: 'MediaSources,Path,LocationType,IsFolder,CanDownload,UserData,BasicSyncInfo',
       });
 
       const response = await this.getHttpClient().get(
@@ -867,22 +868,36 @@ class JellyfinSidebar {
         episodeList.innerHTML = '';
         response.data.Items.forEach((episode) => {
           const episodeEl = document.createElement('div');
-          episodeEl.className = 'episode-item';
+          const isAvailable = this.isEpisodeAvailable(episode);
+
+          episodeEl.className = `episode-item ${!isAvailable ? 'unavailable' : ''}`;
           episodeEl.dataset.episodeId = episode.Id;
+          episodeEl.dataset.available = isAvailable.toString();
 
           const episodeNum = episode.IndexNumber || '?';
           const title = episode.Name || `Episode ${episodeNum}`;
 
-          episodeEl.innerHTML = `${episodeNum}. ${title}`;
+          // Add availability indicator
+          const availabilityIcon = isAvailable
+            ? ''
+            : ' <span class="unavailable-icon" title="Episode not available on server">⚠️</span>';
 
-          episodeEl.addEventListener('click', () => {
-            document
-              .querySelectorAll('.episode-item')
-              .forEach((el) => el.classList.remove('selected'));
-            episodeEl.classList.add('selected');
-            this.selectedEpisode = episode;
-            document.getElementById('playEpisodeBtn').disabled = false;
-          });
+          episodeEl.innerHTML = `${episodeNum}. ${title}${availabilityIcon}`;
+
+          if (isAvailable) {
+            episodeEl.addEventListener('click', () => {
+              document
+                .querySelectorAll('.episode-item')
+                .forEach((el) => el.classList.remove('selected'));
+              episodeEl.classList.add('selected');
+              this.selectedEpisode = episode;
+              document.getElementById('playEpisodeBtn').disabled = false;
+            });
+          } else {
+            // Add cursor indicator for unavailable episodes
+            episodeEl.style.cursor = 'not-allowed';
+            episodeEl.title = 'This episode is not available on the server';
+          }
 
           episodeList.appendChild(episodeEl);
         });
@@ -907,6 +922,64 @@ class JellyfinSidebar {
     this.selectedEpisode = null;
     this.selectedSeason = null;
     document.getElementById('playEpisodeBtn').disabled = true;
+  }
+
+  /**
+   * Check if an episode is available on the server
+   * @param {Object} episode - The episode object from Jellyfin API
+   * @returns {boolean} - True if episode is available, false otherwise
+   */
+  isEpisodeAvailable(episode) {
+    try {
+      // Check multiple indicators of availability
+
+      // 1. Check if LocationType exists and is not Virtual
+      if (episode.LocationType && episode.LocationType === 'Virtual') {
+        debugLog(`Episode ${episode.Name} marked as Virtual (unavailable)`);
+        return false;
+      }
+
+      // 2. Check if MediaSources exist and have valid data
+      if (!episode.MediaSources || episode.MediaSources.length === 0) {
+        debugLog(`Episode ${episode.Name} has no MediaSources`);
+        return false;
+      }
+
+      // 3. Check if any MediaSource has a valid Path
+      const hasValidPath = episode.MediaSources.some((source) => {
+        return source.Path && source.Path.trim() !== '';
+      });
+
+      if (!hasValidPath) {
+        debugLog(`Episode ${episode.Name} has no valid media paths`);
+        return false;
+      }
+
+      // 4. Check if episode has a direct Path property
+      if (!episode.Path || episode.Path.trim() === '') {
+        debugLog(`Episode ${episode.Name} has no direct path`);
+        return false;
+      }
+
+      // 5. Additional check: if CanDownload is explicitly false
+      if (episode.CanDownload === false) {
+        debugLog(`Episode ${episode.Name} marked as not downloadable`);
+        return false;
+      }
+
+      // 6. Check if it's marked as a folder (shouldn't be for episodes)
+      if (episode.IsFolder === true) {
+        debugLog(`Episode ${episode.Name} marked as folder`);
+        return false;
+      }
+
+      debugLog(`Episode ${episode.Name} appears to be available`);
+      return true;
+    } catch (error) {
+      debugLog(`Error checking episode availability for ${episode.Name}: ${error.message}`);
+      // If we can't determine availability, assume it's unavailable for safety
+      return false;
+    }
   }
 
   // Media Playback

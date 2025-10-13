@@ -20,6 +20,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Recent items browser**: Browse recently added movies and TV shows
 - **Search functionality**: Search your Jellyfin library for specific content
 - **Series episode selection**: Browse seasons and episodes for TV shows
+- **Episode availability detection**: Unavailable episodes are visually marked and cannot be clicked
 - **Direct playback**: Click to play media directly in IINA
 
 ### General Features
