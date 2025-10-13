@@ -2,18 +2,7 @@
  * IINA Jellyfin Plugin
  */
 
-const {
-  core,
-  console,
-  menu,
-  event,
-  http,
-  utils,
-  preferences,
-  mpv,
-  sidebar,
-  global,
-} = iina;
+const { core, console, menu, event, http, utils, preferences, mpv, sidebar, global } = iina;
 
 // Plugin state
 let lastJellyfinUrl = null;
@@ -24,12 +13,12 @@ let lastItemId = null;
  * Only logs if debug logging is enabled in preferences
  */
 function debugLog(message) {
-  if (preferences.get("debug_logging")) {
+  if (preferences.get('debug_logging')) {
     console.log(`DEBUG: ${message}`);
   }
 }
 
-debugLog("Jellyfin Subtitles Plugin loaded");
+debugLog('Jellyfin Subtitles Plugin loaded');
 
 /**
  * Parse Jellyfin URL to extract server info and item ID
@@ -38,7 +27,7 @@ function parseJellyfinUrl(url) {
   try {
     debugLog(`Attempting to parse URL: "${url}"`);
     debugLog(`URL type: ${typeof url}`);
-    debugLog(`URL length: ${url ? url.length : "undefined"}`);
+    debugLog(`URL length: ${url ? url.length : 'undefined'}`);
 
     if (!url) {
       debugLog(`URL is null or undefined`);
@@ -60,16 +49,16 @@ function parseJellyfinUrl(url) {
     debugLog(`Extracted serverBase: ${serverBase}`);
 
     // Extract pathname and query string
-    const urlParts = url.split("?");
-    const pathname = urlParts[0].replace(/^https?:\/\/[^\/]+/, "");
-    const queryString = urlParts[1] || "";
+    const urlParts = url.split('?');
+    const pathname = urlParts[0].replace(/^https?:\/\/[^\/]+/, '');
+    const queryString = urlParts[1] || '';
 
     debugLog(`Extracted pathname: ${pathname}`);
     debugLog(`Extracted queryString: ${queryString}`);
 
     // Extract item ID from path
     const pathMatch = pathname.match(/\/Items\/([^\/]+)/);
-    debugLog(`Path match result: ${pathMatch ? pathMatch[0] : "no match"}`);
+    debugLog(`Path match result: ${pathMatch ? pathMatch[0] : 'no match'}`);
 
     if (!pathMatch) {
       debugLog(`No /Items/ pattern found in pathname: ${pathname}`);
@@ -88,7 +77,7 @@ function parseJellyfinUrl(url) {
     }
 
     debugLog(
-      `Extracted - itemId: ${itemId}, apiKey: ${apiKey ? "present" : "missing"}, serverBase: ${serverBase}`,
+      `Extracted - itemId: ${itemId}, apiKey: ${apiKey ? 'present' : 'missing'}, serverBase: ${serverBase}`
     );
 
     if (!apiKey) {
@@ -114,10 +103,10 @@ function parseJellyfinUrl(url) {
 function isJellyfinUrl(url) {
   return (
     url &&
-    ((url.includes("/Items/") && url.includes("api_key=")) ||
-      url.includes("jellyfin") ||
-      url.includes("/Audio/") ||
-      url.includes("/Videos/"))
+    ((url.includes('/Items/') && url.includes('api_key=')) ||
+      url.includes('jellyfin') ||
+      url.includes('/Audio/') ||
+      url.includes('/Videos/'))
   );
 }
 
@@ -131,7 +120,7 @@ async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
 
     const response = await http.get(playbackUrl, {
       headers: {
-        Accept: "application/json",
+        Accept: 'application/json',
       },
     });
 
@@ -141,14 +130,14 @@ async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     debugLog(`Response.data type: ${typeof response.data}`);
 
     if (!response.data) {
-      throw new Error("No data received from Jellyfin API");
+      throw new Error('No data received from Jellyfin API');
     }
 
     // IINA automatically parses JSON responses, so response.data is already an object
-    if (typeof response.data === "object") {
+    if (typeof response.data === 'object') {
       debugLog(`Response data is already parsed object`);
       debugLog(
-        `MediaSources found: ${response.data.MediaSources ? response.data.MediaSources.length : "none"}`,
+        `MediaSources found: ${response.data.MediaSources ? response.data.MediaSources.length : 'none'}`
       );
       return response.data;
     } else {
@@ -173,7 +162,7 @@ async function fetchItemMetadata(serverBase, itemId, apiKey) {
 
     const response = await http.get(metadataUrl, {
       headers: {
-        Accept: "application/json",
+        Accept: 'application/json',
       },
     });
 
@@ -182,11 +171,11 @@ async function fetchItemMetadata(serverBase, itemId, apiKey) {
     debugLog(`Metadata response.data type: ${typeof response.data}`);
 
     if (!response.data) {
-      throw new Error("No metadata received from Jellyfin API");
+      throw new Error('No metadata received from Jellyfin API');
     }
 
     // IINA automatically parses JSON responses, so response.data is already an object
-    if (typeof response.data === "object") {
+    if (typeof response.data === 'object') {
       debugLog(`Metadata is already parsed object`);
       debugLog(`Item name: ${response.data.Name}`);
       debugLog(`Item type: ${response.data.Type}`);
@@ -208,22 +197,22 @@ async function fetchItemMetadata(serverBase, itemId, apiKey) {
  */
 async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
   try {
-    if (!preferences.get("set_video_title")) {
-      debugLog("Video title setting is disabled in preferences");
+    if (!preferences.get('set_video_title')) {
+      debugLog('Video title setting is disabled in preferences');
       return;
     }
 
     const metadata = await fetchItemMetadata(serverBase, itemId, apiKey);
 
     if (!metadata || !metadata.Name) {
-      debugLog("No title found in metadata");
+      debugLog('No title found in metadata');
       return;
     }
 
     let title = metadata.Name;
 
     // For TV episodes, construct a more informative title
-    if (metadata.Type === "Episode") {
+    if (metadata.Type === 'Episode') {
       const seriesName = metadata.SeriesName;
       const seasonNumber = metadata.ParentIndexNumber;
       const episodeNumber = metadata.IndexNumber;
@@ -233,7 +222,7 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
 
         // Add season and episode numbers if available
         if (seasonNumber !== undefined && episodeNumber !== undefined) {
-          episodeTitle += ` S${seasonNumber.toString().padStart(2, "0")}E${episodeNumber.toString().padStart(2, "0")}`;
+          episodeTitle += ` S${seasonNumber.toString().padStart(2, '0')}E${episodeNumber.toString().padStart(2, '0')}`;
         }
 
         // Add episode name
@@ -242,7 +231,7 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
       }
     }
     // For movies, just use the name (potentially with year)
-    else if (metadata.Type === "Movie") {
+    else if (metadata.Type === 'Movie') {
       if (metadata.ProductionYear) {
         title = `${metadata.Name} (${metadata.ProductionYear})`;
       }
@@ -254,7 +243,7 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
     let titleSet = false;
 
     // Method 1: Try core.setTitle (if it exists)
-    if (typeof core.setTitle === "function") {
+    if (typeof core.setTitle === 'function') {
       try {
         core.setTitle(title);
         titleSet = true;
@@ -265,13 +254,9 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
     }
 
     // Method 2: Try mpv property if available
-    if (
-      !titleSet &&
-      typeof mpv !== "undefined" &&
-      typeof mpv.set === "function"
-    ) {
+    if (!titleSet && typeof mpv !== 'undefined' && typeof mpv.set === 'function') {
       try {
-        mpv.set("force-media-title", title);
+        mpv.set('force-media-title', title);
         titleSet = true;
         debugLog(`Video title set via mpv property: ${title}`);
       } catch (error) {
@@ -280,32 +265,25 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
     }
 
     // Method 3: Try mpv command if available
-    if (
-      !titleSet &&
-      typeof mpv !== "undefined" &&
-      typeof mpv.command === "function"
-    ) {
+    if (!titleSet && typeof mpv !== 'undefined' && typeof mpv.command === 'function') {
       try {
-        mpv.command(["set", "force-media-title", title]);
+        mpv.command(['set', 'force-media-title', title]);
         titleSet = true;
         debugLog(`Video title set via mpv command: ${title}`);
       } catch (error) {
-        debugLog(
-          `mpv.command(['set', 'force-media-title']) failed: ${error.message}`,
-        );
+        debugLog(`mpv.command(['set', 'force-media-title']) failed: ${error.message}`);
       }
     }
 
     if (!titleSet) {
       debugLog(`Could not set title via IINA API, title would be: ${title}`);
       debugLog(
-        "Available core methods: " +
-          (core ? Object.keys(core).join(", ") : "core undefined"),
+        'Available core methods: ' + (core ? Object.keys(core).join(', ') : 'core undefined')
       );
-      debugLog("Available iina properties: " + Object.keys(iina).join(", "));
+      debugLog('Available iina properties: ' + Object.keys(iina).join(', '));
     }
 
-    if (preferences.get("show_notifications")) {
+    if (preferences.get('show_notifications')) {
       core.osd(`Title: ${title}`);
     }
   } catch (error) {
@@ -316,20 +294,13 @@ async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
 /**
  * Download subtitle file from Jellyfin
  */
-async function downloadSubtitle(
-  serverBase,
-  itemId,
-  streamIndex,
-  apiKey,
-  language,
-  codec,
-) {
+async function downloadSubtitle(serverBase, itemId, streamIndex, apiKey, language, codec) {
   try {
     const subtitleUrl = `${serverBase}/Videos/${itemId}/${streamIndex}/Subtitles.${codec}?api_key=${apiKey}`;
     // Sanitize filename components to prevent path traversal
-    const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, "_");
-    const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, "_");
-    const sanitizedCodec = String(codec).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const sanitizedCodec = String(codec).replace(/[^a-zA-Z0-9_-]/g, '_');
     const fileName = `jellyfin_${sanitizedItemId}_${streamIndex}_${sanitizedLanguage}.${sanitizedCodec}`;
     const localPath = `@tmp/${fileName}`;
 
@@ -343,7 +314,7 @@ async function downloadSubtitle(
 
     debugLog(`Subtitle loaded: ${resolvedPath}`);
 
-    if (preferences.get("show_notifications")) {
+    if (preferences.get('show_notifications')) {
       core.osd(`Loaded ${language} subtitle`);
     }
 
@@ -364,18 +335,18 @@ async function downloadExternalSubtitle(
   subtitlePath,
   apiKey,
   language,
-  codec,
+  codec
 ) {
   try {
     // Determine the proper file extension based on codec
-    let extension = "srt"; // default
-    if (codec === "subrip") extension = "srt";
-    else if (codec === "webvtt") extension = "vtt";
-    else if (codec === "ass") extension = "ass";
-    else if (codec === "ssa") extension = "ssa";
-    else if (codec === "vtt") extension = "vtt";
-    else if (codec && codec.toLowerCase().includes("srt")) extension = "srt";
-    else if (codec && codec.toLowerCase().includes("vtt")) extension = "vtt";
+    let extension = 'srt'; // default
+    if (codec === 'subrip') extension = 'srt';
+    else if (codec === 'webvtt') extension = 'vtt';
+    else if (codec === 'ass') extension = 'ass';
+    else if (codec === 'ssa') extension = 'ssa';
+    else if (codec === 'vtt') extension = 'vtt';
+    else if (codec && codec.toLowerCase().includes('srt')) extension = 'srt';
+    else if (codec && codec.toLowerCase().includes('vtt')) extension = 'vtt';
 
     // Use the correct Jellyfin API endpoint for subtitle download
     // Format: /Videos/{itemId}/{mediaSourceId}/Subtitles/{streamIndex}/stream.{extension}
@@ -388,15 +359,12 @@ async function downloadExternalSubtitle(
       const pathParts = subtitlePath.split(/[/\\]/); // Handle both / and \ separators
       const originalName = pathParts[pathParts.length - 1];
       // Sanitize filename to prevent path traversal and invalid characters
-      fileName = originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      fileName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
       debugLog(`Using sanitized filename: ${fileName}`);
     } else {
       // Fallback to generated name with sanitized components
-      const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, "_");
-      const sanitizedLanguage = String(language).replace(
-        /[^a-zA-Z0-9_-]/g,
-        "_",
-      );
+      const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, '_');
       fileName = `jellyfin_external_${sanitizedItemId}_${streamIndex}_${sanitizedLanguage}.${extension}`;
       debugLog(`Using generated filename: ${fileName}`);
     }
@@ -418,7 +386,7 @@ async function downloadExternalSubtitle(
 
     debugLog(`External subtitle loaded successfully: ${resolvedPath}`);
 
-    if (preferences.get("show_notifications")) {
+    if (preferences.get('show_notifications')) {
       core.osd(`Loaded external ${language} subtitle`);
     }
 
@@ -437,7 +405,7 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
     const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
 
     if (!playbackInfo.MediaSources || playbackInfo.MediaSources.length === 0) {
-      debugLog("No media sources found");
+      debugLog('No media sources found');
       return;
     }
 
@@ -445,32 +413,29 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
     const mediaStreams = mediaSource.MediaStreams || [];
 
     const subtitleStreams = mediaStreams.filter(
-      (stream) => stream.Type === "Subtitle" && stream.IsTextSubtitleStream,
+      (stream) => stream.Type === 'Subtitle' && stream.IsTextSubtitleStream
     );
 
     debugLog(`Found ${subtitleStreams.length} subtitle streams`);
 
-    const preferredLanguages = (
-      preferences.get("preferred_languages") || "en,eng"
-    )
-      .split(",")
+    const preferredLanguages = (preferences.get('preferred_languages') || 'en,eng')
+      .split(',')
       .map((lang) => lang.trim().toLowerCase())
       .filter((lang) => lang.length > 0);
-    const downloadAll = preferences.get("download_all_subtitles");
+    const downloadAll = preferences.get('download_all_subtitles');
 
     let downloadedCount = 0;
 
     for (const stream of subtitleStreams) {
-      const language = stream.Language || "unknown";
-      const codec = stream.Codec || "srt";
+      const language = stream.Language || 'unknown';
+      const codec = stream.Codec || 'srt';
 
       // Check if we should download this subtitle
       const shouldDownload =
         downloadAll ||
         preferredLanguages.some(
           (prefLang) =>
-            language.toLowerCase().includes(prefLang) ||
-            prefLang.includes(language.toLowerCase()),
+            language.toLowerCase().includes(prefLang) || prefLang.includes(language.toLowerCase())
         );
 
       if (!shouldDownload) {
@@ -479,7 +444,7 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
       }
 
       debugLog(
-        `Processing subtitle: ${language} (${codec}) - Index: ${stream.Index}, External: ${stream.IsExternal}`,
+        `Processing subtitle: ${language} (${codec}) - Index: ${stream.Index}, External: ${stream.IsExternal}`
       );
 
       try {
@@ -492,18 +457,11 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
             stream.Path,
             apiKey,
             language,
-            codec,
+            codec
           );
         } else {
           // Handle embedded subtitle streams
-          await downloadSubtitle(
-            serverBase,
-            itemId,
-            stream.Index,
-            apiKey,
-            language,
-            codec,
-          );
+          await downloadSubtitle(serverBase, itemId, stream.Index, apiKey, language, codec);
         }
         downloadedCount++;
       } catch (error) {
@@ -511,18 +469,18 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
       }
     }
 
-    if (downloadedCount > 0 && preferences.get("show_notifications")) {
+    if (downloadedCount > 0 && preferences.get('show_notifications')) {
       core.osd(`Downloaded ${downloadedCount} subtitle(s)`);
     } else if (downloadedCount === 0) {
-      debugLog("No subtitles downloaded");
-      if (preferences.get("show_notifications")) {
-        core.osd("No matching subtitles found");
+      debugLog('No subtitles downloaded');
+      if (preferences.get('show_notifications')) {
+        core.osd('No matching subtitles found');
       }
     }
   } catch (error) {
     debugLog(`Error downloading subtitles: ${error.message}`);
-    if (preferences.get("show_notifications")) {
-      core.osd("Failed to download subtitles");
+    if (preferences.get('show_notifications')) {
+      core.osd('Failed to download subtitles');
     }
   }
 }
@@ -540,44 +498,34 @@ function onFileLoaded(fileUrl) {
       // Store for manual download option
       lastJellyfinUrl = fileUrl;
       lastItemId = jellyfinInfo.itemId;
-      debugLog(
-        `Stored Jellyfin media for manual download: ${jellyfinInfo.itemId}`,
-      );
+      debugLog(`Stored Jellyfin media for manual download: ${jellyfinInfo.itemId}`);
 
       // Set video title from metadata if enabled
-      if (preferences.get("set_video_title")) {
-        debugLog(
-          `Setting video title from metadata for: ${jellyfinInfo.itemId}`,
-        );
+      if (preferences.get('set_video_title')) {
+        debugLog(`Setting video title from metadata for: ${jellyfinInfo.itemId}`);
         setVideoTitleFromMetadata(
           jellyfinInfo.serverBase,
           jellyfinInfo.itemId,
-          jellyfinInfo.apiKey,
+          jellyfinInfo.apiKey
         );
       }
 
       // Only auto-download if enabled
-      if (preferences.get("auto_download_enabled")) {
+      if (preferences.get('auto_download_enabled')) {
         debugLog(`Auto-downloading subtitles for: ${jellyfinInfo.itemId}`);
-        downloadAllSubtitles(
-          jellyfinInfo.serverBase,
-          jellyfinInfo.itemId,
-          jellyfinInfo.apiKey,
-        );
+        downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
       } else {
-        debugLog(
-          "Auto download disabled, but Jellyfin URL stored for manual download",
-        );
+        debugLog('Auto download disabled, but Jellyfin URL stored for manual download');
       }
     } else {
-      debugLog("Failed to parse Jellyfin URL");
+      debugLog('Failed to parse Jellyfin URL');
     }
   } else {
     // Clear stored Jellyfin URL when loading non-Jellyfin content
-    debugLog("Non-Jellyfin URL loaded, clearing stored Jellyfin data");
+    debugLog('Non-Jellyfin URL loaded, clearing stored Jellyfin data');
     lastJellyfinUrl = null;
     lastItemId = null;
-    debugLog("Not a Jellyfin URL, skipping subtitle download");
+    debugLog('Not a Jellyfin URL, skipping subtitle download');
   }
 }
 
@@ -612,10 +560,8 @@ function manualDownloadSubtitles() {
   }
 
   if (!currentUrl) {
-    debugLog(
-      "No Jellyfin URL found - checking for Jellyfin URL in current file",
-    );
-    core.osd("No Jellyfin media detected. Please open a Jellyfin URL first.");
+    debugLog('No Jellyfin URL found - checking for Jellyfin URL in current file');
+    core.osd('No Jellyfin media detected. Please open a Jellyfin URL first.');
     return;
   }
 
@@ -623,14 +569,14 @@ function manualDownloadSubtitles() {
 
   if (!isJellyfinUrl(currentUrl)) {
     debugLog(`URL is not a Jellyfin URL: ${currentUrl}`);
-    core.osd("Current media is not from Jellyfin");
+    core.osd('Current media is not from Jellyfin');
     return;
   }
 
   const jellyfinInfo = parseJellyfinUrl(currentUrl);
   if (!jellyfinInfo) {
     debugLog(`Failed to parse Jellyfin URL: ${currentUrl}`);
-    core.osd("Failed to parse Jellyfin URL - check console for details");
+    core.osd('Failed to parse Jellyfin URL - check console for details');
     return;
   }
 
@@ -639,12 +585,8 @@ function manualDownloadSubtitles() {
   lastItemId = jellyfinInfo.itemId;
 
   debugLog(`Downloading subtitles for item: ${jellyfinInfo.itemId}`);
-  core.osd("Downloading subtitles...");
-  downloadAllSubtitles(
-    jellyfinInfo.serverBase,
-    jellyfinInfo.itemId,
-    jellyfinInfo.apiKey,
-  );
+  core.osd('Downloading subtitles...');
+  downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
 }
 
 /**
@@ -678,10 +620,8 @@ function manualSetTitle() {
   }
 
   if (!currentUrl) {
-    debugLog(
-      "No Jellyfin URL found - checking for Jellyfin URL in current file",
-    );
-    core.osd("No Jellyfin media detected. Please open a Jellyfin URL first.");
+    debugLog('No Jellyfin URL found - checking for Jellyfin URL in current file');
+    core.osd('No Jellyfin media detected. Please open a Jellyfin URL first.');
     return;
   }
 
@@ -689,14 +629,14 @@ function manualSetTitle() {
 
   if (!isJellyfinUrl(currentUrl)) {
     debugLog(`URL is not a Jellyfin URL: ${currentUrl}`);
-    core.osd("Current media is not from Jellyfin");
+    core.osd('Current media is not from Jellyfin');
     return;
   }
 
   const jellyfinInfo = parseJellyfinUrl(currentUrl);
   if (!jellyfinInfo) {
     debugLog(`Failed to parse Jellyfin URL: ${currentUrl}`);
-    core.osd("Failed to parse Jellyfin URL - check console for details");
+    core.osd('Failed to parse Jellyfin URL - check console for details');
     return;
   }
 
@@ -705,42 +645,38 @@ function manualSetTitle() {
   lastItemId = jellyfinInfo.itemId;
 
   debugLog(`Setting title for item: ${jellyfinInfo.itemId}`);
-  core.osd("Fetching title...");
-  setVideoTitleFromMetadata(
-    jellyfinInfo.serverBase,
-    jellyfinInfo.itemId,
-    jellyfinInfo.apiKey,
-  );
+  core.osd('Fetching title...');
+  setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
 }
 
 // Menu items
-menu.addItem(menu.item("Download Jellyfin Subtitles", manualDownloadSubtitles));
-menu.addItem(menu.item("Set Jellyfin Title", manualSetTitle));
+menu.addItem(menu.item('Download Jellyfin Subtitles', manualDownloadSubtitles));
+menu.addItem(menu.item('Set Jellyfin Title', manualSetTitle));
 menu.addItem(
   menu.item(
-    "Show Jellyfin Browser",
+    'Show Jellyfin Browser',
     () => {
       sidebar.show();
     },
-    { keyBinding: "Cmd+Shift+J" },
-  ),
+    { keyBinding: 'Cmd+Shift+J' }
+  )
 );
 
 /**
  * Open media in a new IINA instance
  */
 function openInNewInstance(streamUrl, title) {
-  if (typeof global !== "undefined" && global.postMessage) {
-    debugLog("Requesting new player instance from global entry");
+  if (typeof global !== 'undefined' && global.postMessage) {
+    debugLog('Requesting new player instance from global entry');
 
     // Listen for response from global entry
     const messageHandler = (name, data) => {
-      if (name === "player-created") {
-        debugLog("New player instance created: " + JSON.stringify(data));
+      if (name === 'player-created') {
+        debugLog('New player instance created: ' + JSON.stringify(data));
         core.osd(`Opened in new window: ${data.title}`);
-      } else if (name === "player-creation-failed") {
-        debugLog("Failed to create new player instance: " + data.error);
-        core.osd("Failed to open new window - opening in current window");
+      } else if (name === 'player-creation-failed') {
+        debugLog('Failed to create new player instance: ' + data.error);
+        core.osd('Failed to open new window - opening in current window');
         // Fallback to current window
         core.open(streamUrl);
       }
@@ -749,21 +685,21 @@ function openInNewInstance(streamUrl, title) {
     // Set up temporary listener (IINA doesn't have off() so we use this pattern)
     const originalHandler = global.onMessage;
     global.onMessage = (name, callback) => {
-      if (name === "player-created" || name === "player-creation-failed") {
+      if (name === 'player-created' || name === 'player-creation-failed') {
         return messageHandler(name, callback);
       }
       return originalHandler?.call(global, name, callback);
     };
 
     // Request new instance creation
-    global.postMessage("create-player", { url: streamUrl, title: title });
+    global.postMessage('create-player', { url: streamUrl, title: title });
 
     // Clean up listener after 5 seconds
     setTimeout(() => {
       global.onMessage = originalHandler;
     }, 5000);
   } else {
-    debugLog("Global entry not available, opening in current window");
+    debugLog('Global entry not available, opening in current window');
     core.open(streamUrl);
   }
 }
@@ -772,61 +708,61 @@ function openInNewInstance(streamUrl, title) {
  * Handle media playback requests from sidebar
  */
 function handlePlayMedia(message) {
-  debugLog("HANDLE PLAY MEDIA CALLED");
-  debugLog("handlePlayMedia called with message: " + JSON.stringify(message));
+  debugLog('HANDLE PLAY MEDIA CALLED');
+  debugLog('handlePlayMedia called with message: ' + JSON.stringify(message));
   const { streamUrl, title } = message;
   debugLog(`Opening media: ${title} - ${streamUrl}`);
 
   try {
-    const openInNewWindow = preferences.get("open_in_new_window");
-    debugLog("open_in_new_window preference: " + openInNewWindow);
+    const openInNewWindow = preferences.get('open_in_new_window');
+    debugLog('open_in_new_window preference: ' + openInNewWindow);
 
     if (openInNewWindow) {
-      debugLog("Opening media in new instance: " + streamUrl);
+      debugLog('Opening media in new instance: ' + streamUrl);
       core.osd(`Opening in new window: ${title}`);
       openInNewInstance(streamUrl, title);
     } else {
-      debugLog("Opening media in current window: " + streamUrl);
+      debugLog('Opening media in current window: ' + streamUrl);
       core.osd(`Opening: ${title}`);
       core.open(streamUrl);
     }
 
-    debugLog("Successfully initiated media opening: " + streamUrl);
+    debugLog('Successfully initiated media opening: ' + streamUrl);
   } catch (error) {
-    debugLog("Error opening media: " + error);
-    core.osd("Failed to open media");
+    debugLog('Error opening media: ' + error);
+    core.osd('Failed to open media');
 
     // Fallback: copy to clipboard as backup
     try {
-      if (typeof core !== "undefined" && core.setClipboard) {
+      if (typeof core !== 'undefined' && core.setClipboard) {
         core.setClipboard(streamUrl);
-        core.osd("Error opening - URL copied to clipboard");
-      } else if (typeof utils !== "undefined" && utils.setClipboard) {
+        core.osd('Error opening - URL copied to clipboard');
+      } else if (typeof utils !== 'undefined' && utils.setClipboard) {
         utils.setClipboard(streamUrl);
-        core.osd("Error opening - URL copied to clipboard");
+        core.osd('Error opening - URL copied to clipboard');
       } else {
-        core.osd("Failed to open - check console for URL");
+        core.osd('Failed to open - check console for URL');
       }
     } catch (clipboardError) {
-      debugLog("Both open and clipboard failed: " + clipboardError);
-      core.osd("Failed to open media - check console");
+      debugLog('Both open and clipboard failed: ' + clipboardError);
+      core.osd('Failed to open media - check console');
     }
   }
 }
 
 // Event handlers
-event.on("iina.file-loaded", onFileLoaded);
+event.on('iina.file-loaded', onFileLoaded);
 
 // Initialize sidebar when window is loaded
-event.on("iina.window-loaded", () => {
-  sidebar.loadFile("src/ui/sidebar/index.html");
+event.on('iina.window-loaded', () => {
+  sidebar.loadFile('src/ui/sidebar/index.html');
 
   // Set up message handler for sidebar playback requests
-  sidebar.onMessage("play-media", handlePlayMedia);
+  sidebar.onMessage('play-media', handlePlayMedia);
 
   // Also expose a global method for sidebar communication
   global.playMedia = (streamUrl, title) => {
-    debugLog("Global playMedia called with:", streamUrl, title);
+    debugLog('Global playMedia called with:', streamUrl, title);
     handlePlayMedia({ streamUrl, title });
   };
 });

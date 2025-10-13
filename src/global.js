@@ -10,18 +10,16 @@ const { global, console, preferences } = iina;
  * Only logs if debug logging is enabled in preferences
  */
 function debugLog(message) {
-  if (preferences?.get?.("debug_logging")) {
+  if (preferences?.get?.('debug_logging')) {
     console.log(`DEBUG: ${message}`);
   }
 }
 
-debugLog("Jellyfin Plugin Global Entry loaded");
+debugLog('Jellyfin Plugin Global Entry loaded');
 
 // Listen for messages from main entries to create new instances
-global.onMessage("create-player", (data, player) => {
-  debugLog(
-    "Global entry received create-player message: " + JSON.stringify(data),
-  );
+global.onMessage('create-player', (data, player) => {
+  debugLog('Global entry received create-player message: ' + JSON.stringify(data));
 
   try {
     const { url, title } = data;
@@ -38,18 +36,18 @@ global.onMessage("create-player", (data, player) => {
 
     // Send confirmation back to the requesting player
     if (player) {
-      global.postMessage(player, "player-created", {
+      global.postMessage(player, 'player-created', {
         playerId: playerId,
         title: title,
         url: url,
       });
     }
   } catch (error) {
-    debugLog("Error creating player instance: " + error);
+    debugLog('Error creating player instance: ' + error);
 
     // Send error back to requesting player
     if (player) {
-      global.postMessage(player, "player-creation-failed", {
+      global.postMessage(player, 'player-creation-failed', {
         error: error.toString(),
         url: data.url,
       });
@@ -57,4 +55,4 @@ global.onMessage("create-player", (data, player) => {
   }
 });
 
-debugLog("Global entry message listeners registered");
+debugLog('Global entry message listeners registered');

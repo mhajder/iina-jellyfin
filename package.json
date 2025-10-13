@@ -13,11 +13,11 @@
   "author": "Mateusz Hajder",
   "type": "module",
   "scripts": {
-    "format": "prettier --check src/",
-    "format:fix": "prettier --write src/",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
     "lint": "eslint src/",
     "lint:fix": "eslint --fix src/",
-    "check": "eslint src/ && prettier --check src/"
+    "check": "eslint src/ && prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

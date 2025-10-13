@@ -9,13 +9,7 @@
   },
   "entry": "src/index.js",
   "globalEntry": "src/global.js",
-  "permissions": [
-    "show-osd",
-    "show-alert",
-    "network-request",
-    "file-system",
-    "sidebar"
-  ],
+  "permissions": ["show-osd", "show-alert", "network-request", "file-system", "sidebar"],
   "allowedDomains": ["*"],
   "preferencesPage": "pref.html",
   "helpPage": "help.html",

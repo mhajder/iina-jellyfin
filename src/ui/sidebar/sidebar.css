@@ -31,7 +31,7 @@
 }
 
 .loading::before {
-  content: "⏳ ";
+  content: '⏳ ';
   display: inline-block;
   animation: spin 1s linear infinite;
 }
@@ -65,17 +65,17 @@
 
 /* Error state styling */
 .error::before {
-  content: "⚠️ ";
+  content: '⚠️ ';
 }
 
 /* Success state styling */
 .server-status.connected::before {
-  content: "✅ ";
+  content: '✅ ';
 }
 
 /* Connection indicator */
 .server-status.connecting::before {
-  content: "🔄 ";
+  content: '🔄 ';
   animation: spin 1s linear infinite;
 }
 

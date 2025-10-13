@@ -6,10 +6,7 @@
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
     "checkJs": false,
-    "typeRoots": [
-      "./node_modules/@types",
-      "./node_modules/iina-plugin-definition"
-    ]
+    "typeRoots": ["./node_modules/@types", "./node_modules/iina-plugin-definition"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

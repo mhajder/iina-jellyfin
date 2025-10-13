@@ -18,8 +18,8 @@
         margin: 0;
         font-size: 13px;
         font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
-          Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+          'Open Sans', 'Helvetica Neue', sans-serif;
       }
 
       p {
@@ -62,48 +62,33 @@
 
     <div class="pref-section">
       <label>
-        <input
-          type="checkbox"
-          data-type="bool"
-          data-pref-key="auto_download_enabled"
-        />
+        <input type="checkbox" data-type="bool" data-pref-key="auto_download_enabled" />
         Enable automatic subtitle download
       </label>
       <p class="small secondary pref-help">
-        Automatically download subtitles when opening Jellyfin media URLs in
-        IINA.
+        Automatically download subtitles when opening Jellyfin media URLs in IINA.
       </p>
     </div>
 
     <div class="pref-section">
       <label>
-        <input
-          type="checkbox"
-          data-type="bool"
-          data-pref-key="set_video_title"
-        />
+        <input type="checkbox" data-type="bool" data-pref-key="set_video_title" />
         Set video title from Jellyfin metadata
       </label>
       <p class="small secondary pref-help">
-        Replace the default filename with the actual movie/show title from
-        Jellyfin. Shows proper titles instead of generic "Download?api_key=..."
-        names.
+        Replace the default filename with the actual movie/show title from Jellyfin. Shows proper
+        titles instead of generic "Download?api_key=..." names.
       </p>
     </div>
 
     <div class="pref-section">
       <label>
-        <input
-          type="checkbox"
-          data-type="bool"
-          data-pref-key="open_in_new_window"
-        />
+        <input type="checkbox" data-type="bool" data-pref-key="open_in_new_window" />
         Open media in new IINA window
       </label>
       <p class="small secondary pref-help">
-        When playing media from Jellyfin browser, open it in a new IINA window
-        instead of the current one. This allows you to keep browsing while
-        watching.
+        When playing media from Jellyfin browser, open it in a new IINA window instead of the
+        current one. This allows you to keep browsing while watching.
       </p>
     </div>
 
@@ -120,23 +105,19 @@
       </label>
       <p class="small secondary pref-help">
         Comma-separated list of language codes to download (e.g.,
-        <code>en,eng,pol,pl</code>). Use ISO 639-1 (2-letter) or ISO 639-2
-        (3-letter) language codes.
+        <code>en,eng,pol,pl</code>). Use ISO 639-1 (2-letter) or ISO 639-2 (3-letter) language
+        codes.
       </p>
     </div>
 
     <div class="pref-section">
       <label>
-        <input
-          type="checkbox"
-          data-type="bool"
-          data-pref-key="download_all_subtitles"
-        />
+        <input type="checkbox" data-type="bool" data-pref-key="download_all_subtitles" />
         Download all available subtitles
       </label>
       <p class="small secondary pref-help">
-        Download all subtitle tracks regardless of language preferences. When
-        enabled, the preferred languages setting is ignored.
+        Download all subtitle tracks regardless of language preferences. When enabled, the preferred
+        languages setting is ignored.
       </p>
     </div>
 
@@ -144,11 +125,7 @@
 
     <div class="pref-section">
       <label>
-        <input
-          type="checkbox"
-          data-type="bool"
-          data-pref-key="show_notifications"
-        />
+        <input type="checkbox" data-type="bool" data-pref-key="show_notifications" />
         Show on-screen notifications
       </label>
       <p class="small secondary pref-help">
@@ -164,8 +141,8 @@
         Enable debug logging
       </label>
       <p class="small secondary pref-help">
-        Show detailed debug information in the console for troubleshooting. This
-        will log parsing details, API responses, and other internal operations.
+        Show detailed debug information in the console for troubleshooting. This will log parsing
+        details, API responses, and other internal operations.
       </p>
     </div>
   </body>
