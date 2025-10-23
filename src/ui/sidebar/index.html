@@ -436,8 +436,13 @@
         <div id="episodeList" class="episode-list">
           <div class="loading">Select a season</div>
         </div>
-        <button id="playEpisodeBtn" class="button" disabled>Play Episode</button>
-        <button id="cancelEpisodeBtn" class="button secondary">Back</button>
+        <div style="display: flex; gap: 8px; margin-top: 8px">
+          <button id="playEpisodeBtn" class="button" disabled>Play Episode</button>
+          <button id="openEpisodeInJellyfinBtn" class="button secondary" disabled>
+            Open in Jellyfin
+          </button>
+        </div>
+        <button id="cancelEpisodeBtn" class="button secondary" style="margin-top: 8px">Back</button>
       </div>
     </div>
 

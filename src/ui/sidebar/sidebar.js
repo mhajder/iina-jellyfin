@@ -123,6 +123,10 @@ class JellyfinSidebar {
       this.playSelectedEpisode();
     });
 
+    document.getElementById('openEpisodeInJellyfinBtn').addEventListener('click', () => {
+      this.openSelectedEpisodeInJellyfin();
+    });
+
     document.getElementById('cancelEpisodeBtn').addEventListener('click', () => {
       this.hideEpisodeSelection();
     });
@@ -724,7 +728,33 @@ class JellyfinSidebar {
             <div class="media-title">${title}${year}</div>
             ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
             <div class="media-meta">${type}</div>
+            <div class="media-actions" style="margin-top: 6px; display: flex; gap: 4px;">
+                <button class="button media-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="select">
+                    ${item.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                </button>
+                <button class="button secondary media-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="open-jellyfin">
+                    Open in Jellyfin
+                </button>
+            </div>
         `;
+
+    // Add event listeners for the action buttons
+    const actionButtons = itemEl.querySelectorAll('.media-action-btn');
+    debugLog(`Adding event listeners to ${actionButtons.length} action buttons`);
+    actionButtons.forEach((button, index) => {
+      debugLog(`Setting up button ${index}: ${button.dataset.action}`);
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = button.dataset.action;
+        debugLog(`Action button clicked: ${action} for item ${item.Name}`);
+
+        if (action === 'select') {
+          this.selectMediaItem(item);
+        } else if (action === 'open-jellyfin') {
+          this.openInJellyfin(item);
+        }
+      });
+    });
 
     itemEl.addEventListener('click', () => {
       debugLog('Media item clicked: ' + JSON.stringify(item));
@@ -747,7 +777,40 @@ class JellyfinSidebar {
     itemEl.innerHTML = `
             <div class="media-title">${title}${year}</div>
             <div class="media-meta">${type}</div>
+            <div class="media-actions" style="margin-top: 6px; display: flex; gap: 4px;">
+                <button class="button search-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="select">
+                    ${hint.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                </button>
+                <button class="button secondary search-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="open-jellyfin">
+                    Open in Jellyfin
+                </button>
+            </div>
         `;
+
+    // Add event listeners for the action buttons
+    const actionButtons = itemEl.querySelectorAll('.search-action-btn');
+    debugLog(`Adding event listeners to ${actionButtons.length} search action buttons`);
+    actionButtons.forEach((button, index) => {
+      debugLog(`Setting up search button ${index}: ${button.dataset.action}`);
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = button.dataset.action;
+        debugLog(`Search action button clicked: ${action} for item ${hint.Name}`);
+
+        if (action === 'select') {
+          this.selectSearchItem(hint);
+        } else if (action === 'open-jellyfin') {
+          // For search hints, we need to create a basic item object
+          const searchItem = {
+            Id: hint.ItemId,
+            Type: hint.Type,
+            Name: hint.Name,
+            ProductionYear: hint.ProductionYear,
+          };
+          this.openInJellyfin(searchItem);
+        }
+      });
+    });
 
     itemEl.addEventListener('click', () => {
       this.selectSearchItem(hint);
@@ -892,6 +955,7 @@ class JellyfinSidebar {
               episodeEl.classList.add('selected');
               this.selectedEpisode = episode;
               document.getElementById('playEpisodeBtn').disabled = false;
+              document.getElementById('openEpisodeInJellyfinBtn').disabled = false;
             });
           } else {
             // Add cursor indicator for unavailable episodes
@@ -916,12 +980,75 @@ class JellyfinSidebar {
     }
   }
 
+  openSelectedEpisodeInJellyfin() {
+    debugLog('openSelectedEpisodeInJellyfin called');
+
+    if (this.selectedEpisode) {
+      debugLog(`Opening selected episode in Jellyfin: ${this.selectedEpisode.Name}`);
+      this.openInJellyfin(this.selectedEpisode);
+    } else {
+      debugLog('No episode selected');
+    }
+  }
+
   hideEpisodeSelection() {
     document.getElementById('episodeSection').style.display = 'none';
     document.getElementById('mainContent').style.display = 'block';
     this.selectedEpisode = null;
     this.selectedSeason = null;
     document.getElementById('playEpisodeBtn').disabled = true;
+    document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
+  }
+
+  /**
+   * Open a media item in the Jellyfin web interface
+   * @param {Object} item - The media item (episode, movie, series) to open
+   */
+  openInJellyfin(item) {
+    if (!this.currentServer || !item) {
+      debugLog('Cannot open in Jellyfin: missing server or item');
+      debugLog('Debug info:', {
+        hasServer: !!this.currentServer,
+        hasItem: !!item,
+        serverUrl: this.currentServer?.url,
+        itemId: item?.Id,
+        itemType: item?.Type,
+      });
+      return;
+    }
+
+    try {
+      debugLog(`Opening item in Jellyfin: ${item.Name} (${item.Type})`);
+      debugLog('Item details:', item);
+      debugLog('Server details:', this.currentServer);
+
+      // Construct the Jellyfin web interface URL
+      const jellyfinUrl = `${this.currentServer.url}/web/index.html#!/details?id=${item.Id}`;
+
+      debugLog(`Constructed Jellyfin URL: ${jellyfinUrl}`);
+
+      // Use IINA's postMessage API to request opening the URL in default browser
+      debugLog('Using IINA postMessage to open URL in default browser');
+
+      // Send message to main IINA process to open URL
+      const messageData = {
+        url: jellyfinUrl,
+        title: `${item.Name} - Jellyfin`,
+      };
+
+      debugLog(`Sending message: ${JSON.stringify(messageData)}`);
+      iina.postMessage('open-external-url', messageData);
+
+      debugLog('Successfully sent open-external-url message to IINA');
+    } catch (error) {
+      debugLog('Error in openInJellyfin:', error);
+
+      // Show error feedback to user
+      const errorMessage = `Failed to open Jellyfin page: ${error.message}`;
+      if (typeof iina !== 'undefined' && iina.core && iina.core.osd) {
+        iina.core.osd(errorMessage);
+      }
+    }
   }
 
   /**

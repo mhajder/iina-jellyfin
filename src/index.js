@@ -970,6 +970,35 @@ event.on('iina.window-loaded', () => {
     }
   });
 
+  // Handle external URL opening requests from sidebar
+  sidebar.onMessage('open-external-url', (data) => {
+    if (data && data.url) {
+      debugLog(`Opening external URL: ${data.url}`);
+      try {
+        // Use IINA's utils.open to open in default browser
+        const success = utils.open(data.url);
+        if (success) {
+          debugLog('Successfully opened URL in browser');
+          if (data.title) {
+            core.osd(`Opened ${data.title} in browser`);
+          } else {
+            core.osd('Opened Jellyfin page in browser');
+          }
+        } else {
+          throw new Error('utils.open returned false');
+        }
+      } catch (error) {
+        debugLog(`Failed to open external URL: ${error.message}`);
+
+        // Show error message
+        core.osd('Failed to open Jellyfin page in browser');
+        debugLog(`URL that failed to open: ${data.url}`);
+      }
+    } else {
+      debugLog('Invalid open-external-url message - missing URL');
+    }
+  });
+
   // Also expose a global method for sidebar communication
   global.playMedia = (streamUrl, title) => {
     debugLog('Global playMedia called with:', streamUrl, title);

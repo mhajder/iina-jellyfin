@@ -106,6 +106,45 @@
   margin-top: 4px;
 }
 
+/* Media action buttons */
+.media-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.media-action-btn,
+.search-action-btn {
+  font-size: 10px !important;
+  padding: 3px 6px !important;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.media-action-btn:hover,
+.search-action-btn:hover {
+  transform: none;
+}
+
+/* Responsive button sizing */
+@media (max-width: 300px) {
+  .media-actions {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .media-action-btn,
+  .search-action-btn {
+    flex: none;
+    width: 100%;
+  }
+}
+
 /* Empty state improvements */
 .empty-state {
   opacity: 0.7;
