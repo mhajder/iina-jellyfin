@@ -29,6 +29,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Configurable preferences**: Customizable settings through IINA's preferences panel
 - **On-screen notifications**: Optional OSD messages to keep you informed
 - **Keyboard shortcuts**: Quick access to browser sidebar (Cmd+Shift+J)
+- **Autoplay support**: Automatically plays the next episode or item in a series when available
 
 ## Installation
 
@@ -94,6 +95,7 @@ Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 - **Download all available subtitles**: Download all subtitle tracks, ignoring language preferences
 - **Set video title from Jellyfin metadata**: Replace filenames with proper movie/show titles
 - **Open media in new IINA window**: Play media from browser in separate windows
+- **Enable autoplay**: Automatically play the next episode or item in a series when the current one finishes. Plugin will create a playlist of all available episodes and play them sequentially.
 
 ### Menu Options
 
