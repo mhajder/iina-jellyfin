@@ -3,8 +3,6 @@
  * Handles authentication and media browsing
  */
 
-debugLog('JELLYFIN SIDEBAR JS LOADED');
-
 /**
  * Debug logging helper function
  * Only logs if debug logging is enabled in preferences
@@ -15,10 +13,11 @@ function debugLog(message) {
   }
 }
 
+debugLog('Jellyfin Sidebar loaded');
+
 class JellyfinSidebar {
   constructor() {
     debugLog('JellyfinSidebar constructor called');
-    debugLog('iina object available: ' + typeof iina);
 
     this.currentUser = null;
     this.currentServer = null;
@@ -58,7 +57,7 @@ class JellyfinSidebar {
       try {
         parsedData = JSON.parse(responseData);
       } catch (parseError) {
-        console.warn('Failed to parse JSON response:', parseError);
+        debugLog('Failed to parse JSON response:', parseError);
         parsedData = responseData;
       }
 
@@ -69,7 +68,7 @@ class JellyfinSidebar {
         headers: Object.fromEntries(response.headers.entries()),
       };
     } catch (error) {
-      console.error('HTTP request failed:', error);
+      debugLog('HTTP request failed:', error);
       throw {
         message: error.message,
         status: 0,
@@ -1124,14 +1123,6 @@ class JellyfinSidebar {
         MediaSources: item.MediaSources,
       });
 
-      // Send message to main plugin using IINA's sidebar messaging
-      debugLog('Checking iina availability:', typeof iina);
-      if (typeof iina !== 'undefined') {
-        debugLog('iina.postMessage available:', typeof iina.postMessage);
-      } else {
-        debugLog('iina is undefined, trying alternative methods');
-      }
-
       if (typeof iina !== 'undefined' && iina.postMessage) {
         debugLog('Sending play-media message to main plugin');
         iina.postMessage('play-media', {
@@ -1168,11 +1159,6 @@ class JellyfinSidebar {
 // Initialize sidebar when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   debugLog('DOM loaded, initializing Jellyfin sidebar');
-  debugLog('Document ready state:', document.readyState);
-  debugLog('window.jellyfinPlugin available:', typeof window.jellyfinPlugin);
-  if (window.jellyfinPlugin) {
-    debugLog('jellyfinPlugin.http available:', typeof window.jellyfinPlugin.http);
-  }
   window.jellyfinSidebar = new JellyfinSidebar();
   debugLog('Jellyfin sidebar initialized');
 });
@@ -1185,9 +1171,5 @@ if (document.readyState === 'loading') {
   debugLog('DOM still loading, waiting for DOMContentLoaded');
 } else {
   debugLog('DOM already loaded, initializing immediately');
-  debugLog('window.jellyfinPlugin available:', typeof window.jellyfinPlugin);
-  if (window.jellyfinPlugin) {
-    debugLog('jellyfinPlugin.http available:', typeof window.jellyfinPlugin.http);
-  }
   window.jellyfinSidebar = new JellyfinSidebar();
 }

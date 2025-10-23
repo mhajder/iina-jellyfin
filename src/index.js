@@ -38,8 +38,6 @@ debugLog('Jellyfin Subtitles Plugin loaded');
 function parseJellyfinUrl(url) {
   try {
     debugLog(`Attempting to parse URL: "${url}"`);
-    debugLog(`URL type: ${typeof url}`);
-    debugLog(`URL length: ${url ? url.length : 'undefined'}`);
 
     if (!url) {
       debugLog(`URL is null or undefined`);
@@ -137,9 +135,6 @@ async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     });
 
     debugLog(`Response received`);
-    debugLog(`Response type: ${typeof response}`);
-    debugLog(`Response keys: ${Object.keys(response)}`);
-    debugLog(`Response.data type: ${typeof response.data}`);
 
     if (!response.data) {
       throw new Error('No data received from Jellyfin API');
@@ -179,8 +174,6 @@ async function fetchItemMetadata(serverBase, itemId, apiKey) {
     });
 
     debugLog(`Metadata response received`);
-    debugLog(`Metadata response type: ${typeof response}`);
-    debugLog(`Metadata response.data type: ${typeof response.data}`);
 
     if (!response.data) {
       throw new Error('No metadata received from Jellyfin API');
