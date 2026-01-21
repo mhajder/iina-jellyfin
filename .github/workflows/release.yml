@@ -32,7 +32,7 @@ jobs:
           echo "asset_name=$PLUGIN_FILE" >> $GITHUB_OUTPUT
 
       - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: iina-plugin
           path: ${{ steps.pack.outputs.asset_path }}
