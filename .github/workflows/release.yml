@@ -44,7 +44,7 @@ jobs:
       contents: write
     steps:
       - name: Download plugin artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: iina-plugin
 
