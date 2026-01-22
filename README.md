@@ -26,6 +26,11 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 ### General Features
 
 - **Video title enhancement**: Sets proper movie/show titles instead of generic filenames
+- **Playback progress sync**: Bi-directional synchronization of playback progress with Jellyfin server
+  - Automatic resume from last watched position (synced from Jellyfin)
+  - Periodic progress reporting to Jellyfin (every 10 seconds)
+  - Automatic "watched" status marking at 95% completion
+  - Accurate resume positions across devices
 - **Configurable preferences**: Customizable settings through IINA's preferences panel
 - **On-screen notifications**: Optional OSD messages to keep you informed
 - **Keyboard shortcuts**: Quick access to browser sidebar (Cmd+Shift+J)
@@ -90,6 +95,11 @@ Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 ### Media Playback Settings
 
 - **Enable automatic subtitle download**: Toggle automatic downloading when opening Jellyfin URLs
+- **Synchronize playback progress**: Enable bi-directional progress sync with Jellyfin server
+  - Automatically resumes from last watched position when opening a video
+  - Reports current playback position to Jellyfin every 10 seconds
+  - Automatically marks items as watched at 95% completion
+  - Resume positions sync across all your devices
 - **Show on-screen notifications**: Display OSD messages when subtitles are downloaded
 - **Preferred Languages**: Comma-separated language codes (e.g., `en,eng,pol,pl`)
 - **Download all available subtitles**: Download all subtitle tracks, ignoring language preferences

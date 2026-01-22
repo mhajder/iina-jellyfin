@@ -23,7 +23,8 @@
     "open_in_new_window": true,
     "auto_login_enabled": true,
     "session_max_age_hours": 24,
-    "autoplay_next_episode": true
+    "autoplay_next_episode": true,
+    "sync_playback_progress": true
   },
   "ghRepo": "mhajder/iina-jellyfin",
   "ghVersion": 4
