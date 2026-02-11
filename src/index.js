@@ -1,3 +1,5 @@
+/* global setInterval, clearInterval */
+
 /**
  * IINA Jellyfin Plugin
  */
@@ -27,10 +29,13 @@ const addedEpisodeIds = new Set(); // Track episodes already added to playlist
 // Playback tracking state
 let currentPlaybackSession = null; // Current Jellyfin playback session info
 let lastReportedPosition = 0; // Last reported position in seconds
-let lastProgressReportTime = 0; // Last time progress was reported (ms)
-const PROGRESS_REPORT_INTERVAL = 10000; // Report progress every 10 seconds (ms)
+let lastKnownPosition = 0; // Updated every tick for accurate stop reports
+let playbackTickCount = 0; // Counter for progress report throttling
+let playbackTickTimer = null; // Interval timer for playback ticks
+let isReplacingPlayback = false; // Guard to prevent spurious stop reports during file switch
+const PLAYBACK_TICK_INTERVAL = 1000; // Tick every 1 second
+const PROGRESS_REPORT_TICKS = 10; // Report progress every 10 ticks (10 seconds)
 const WATCHED_THRESHOLD = 0.95; // Consider watched if 95% complete
-const END_THRESHOLD_SECONDS = 30; // Consider near end if within last 30 seconds
 
 /**
  * Debug logging helper function
@@ -573,63 +578,153 @@ async function startPlaybackTracking(serverBase, itemId, apiKey) {
     debugLog(`Could not get duration: ${error.message}`);
   }
 
+  // Start tick-based playback tracking
+  startPlaybackTick();
+
   debugLog('Playback tracking started');
+}
+
+/**
+ * Start the tick-based playback tracking timer
+ * Ticks every 1 second, reports progress every 10 ticks
+ */
+function startPlaybackTick() {
+  stopPlaybackTick();
+  playbackTickCount = 0;
+
+  playbackTickTimer = setInterval(() => {
+    if (!currentPlaybackSession) {
+      stopPlaybackTick();
+      return;
+    }
+
+    try {
+      // Update last known position every tick for accurate stop reports
+      const position = core.status.position;
+      if (position !== null && position !== undefined && position > 0) {
+        lastKnownPosition = position;
+      }
+
+      // Update duration if not yet set
+      if (!currentPlaybackSession.duration) {
+        const duration = core.status.duration;
+        if (duration) {
+          currentPlaybackSession.duration = duration;
+        }
+      }
+
+      playbackTickCount++;
+
+      // Report progress every PROGRESS_REPORT_TICKS ticks
+      if (playbackTickCount >= PROGRESS_REPORT_TICKS) {
+        playbackTickCount = 0;
+        const isPaused = core.status.paused || false;
+        const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
+
+        reportPlaybackProgress(
+          serverBase,
+          itemId,
+          apiKey,
+          lastKnownPosition,
+          playSessionId,
+          mediaSourceId,
+          isPaused
+        );
+
+        lastReportedPosition = lastKnownPosition;
+
+        // Check watched threshold
+        const duration = currentPlaybackSession.duration;
+        if (duration && !currentPlaybackSession.hasReportedWatched) {
+          const percentComplete = lastKnownPosition / duration;
+          debugLog(`Playback progress: ${(percentComplete * 100).toFixed(1)}%`);
+
+          if (percentComplete >= WATCHED_THRESHOLD) {
+            debugLog(`Reached ${WATCHED_THRESHOLD * 100}% threshold, marking as watched`);
+            markAsWatched(serverBase, itemId, apiKey);
+            currentPlaybackSession.hasReportedWatched = true;
+          }
+        }
+      }
+
+      // Check for EOF (within 0.5s of end)
+      const duration = currentPlaybackSession.duration;
+      if (duration && lastKnownPosition > 0) {
+        const remaining = duration - lastKnownPosition;
+        if (remaining <= 0.5) {
+          debugLog('EOF detected via tick, stopping playback tracking');
+          stopPlaybackTracking();
+        }
+      }
+    } catch (error) {
+      debugLog(`Error in playback tick: ${error.message}`);
+    }
+  }, PLAYBACK_TICK_INTERVAL);
+}
+
+/**
+ * Stop the tick-based playback timer
+ */
+function stopPlaybackTick() {
+  if (playbackTickTimer) {
+    clearInterval(playbackTickTimer);
+    playbackTickTimer = null;
+  }
+  playbackTickCount = 0;
 }
 
 /**
  * Handle playback position change
  * Called by mpv.time-pos.changed event
- * Reports progress to Jellyfin periodically and checks watched threshold.
+ * Now only used as a backup — main tracking is tick-based
  */
 function handlePlaybackPositionChange() {
   if (!currentPlaybackSession) return;
 
   try {
-    const currentTime = Date.now();
     const position = core.status.position;
-    const duration = core.status.duration || currentPlaybackSession.duration;
-    const isPaused = core.status.paused || false;
-
-    // Throttle progress reports to avoid excessive API calls
-    if (currentTime - lastProgressReportTime < PROGRESS_REPORT_INTERVAL) {
-      return;
-    }
-
-    if (
-      position !== null &&
-      position !== undefined &&
-      Math.abs(position - lastReportedPosition) > 1
-    ) {
-      const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
-
-      // Report progress to Jellyfin
-      reportPlaybackProgress(
-        serverBase,
-        itemId,
-        apiKey,
-        position,
-        playSessionId,
-        mediaSourceId,
-        isPaused
-      );
-
-      lastReportedPosition = position;
-      lastProgressReportTime = currentTime;
-
-      // Check if we should mark as watched (95% threshold by default)
-      if (duration && !currentPlaybackSession.hasReportedWatched) {
-        const percentComplete = position / duration;
-        debugLog(`Playback progress: ${(percentComplete * 100).toFixed(1)}%`);
-
-        if (percentComplete >= WATCHED_THRESHOLD) {
-          debugLog(`Reached ${WATCHED_THRESHOLD * 100}% threshold, marking as watched`);
-          markAsWatched(serverBase, itemId, apiKey);
-          currentPlaybackSession.hasReportedWatched = true;
-        }
-      }
+    if (position !== null && position !== undefined && position > 0) {
+      lastKnownPosition = position;
     }
   } catch (error) {
     debugLog(`Error in position change handler: ${error.message}`);
+  }
+}
+
+/**
+ * Handle pause state change
+ * Reports pause/unpause immediately to Jellyfin for real-time state sync
+ */
+function handlePauseChange() {
+  if (!currentPlaybackSession) return;
+
+  try {
+    // Update last known position
+    const position = core.status.position;
+    if (position !== null && position !== undefined && position > 0) {
+      lastKnownPosition = position;
+    }
+
+    const isPaused = core.status.paused || false;
+    debugLog(`Pause state changed: isPaused=${isPaused}, position=${lastKnownPosition}`);
+
+    const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
+
+    // Report immediately to Jellyfin
+    reportPlaybackProgress(
+      serverBase,
+      itemId,
+      apiKey,
+      lastKnownPosition,
+      playSessionId,
+      mediaSourceId,
+      isPaused
+    );
+
+    // Reset tick counter so we don't double-report soon after
+    playbackTickCount = 0;
+  } catch (error) {
+    debugLog(`Error in pause change handler: ${error.message}`);
   }
 }
 
@@ -638,28 +733,31 @@ function handlePlaybackPositionChange() {
  */
 function stopPlaybackTracking() {
   if (currentPlaybackSession) {
+    // Stop the tick timer first
+    stopPlaybackTick();
+
     const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
 
-    // Report final position
+    // Use lastKnownPosition as primary, fallback to lastReportedPosition
+    let finalPosition = lastKnownPosition;
     try {
-      const position = core.status.position ?? lastReportedPosition;
-      reportPlaybackStop(serverBase, itemId, apiKey, position, playSessionId, mediaSourceId);
-    } catch (error) {
-      debugLog(`Error reporting final position: ${error.message}`);
-      // Try with last known position
-      reportPlaybackStop(
-        serverBase,
-        itemId,
-        apiKey,
-        lastReportedPosition,
-        playSessionId,
-        mediaSourceId
-      );
+      const position = core.status.position;
+      if (position !== null && position !== undefined && position > 0) {
+        finalPosition = position;
+      }
+    } catch {
+      debugLog(`Could not get final position from core, using lastKnownPosition: ${finalPosition}`);
     }
+
+    if (finalPosition <= 0) {
+      finalPosition = lastReportedPosition;
+    }
+
+    reportPlaybackStop(serverBase, itemId, apiKey, finalPosition, playSessionId, mediaSourceId);
 
     currentPlaybackSession = null;
     lastReportedPosition = 0;
-    lastProgressReportTime = 0;
+    lastKnownPosition = 0;
     debugLog('Playback session ended');
   }
 }
@@ -1682,6 +1780,11 @@ function handlePlayMedia(message) {
       debugLog('Opening media in current window: ' + streamUrl);
       core.osd(`Opening: ${title}`);
 
+      // Set replacement guard so end-file handler doesn't send spurious stop
+      if (currentPlaybackSession) {
+        isReplacingPlayback = true;
+      }
+
       // Clear any previous playlist entries to prevent stale titles
       try {
         if (playlist && typeof playlist.clear === 'function') {
@@ -1700,6 +1803,7 @@ function handlePlayMedia(message) {
           mpv.command('loadfile', [streamUrl, 'replace', '-1', `force-media-title=${title}`]);
         } catch (error) {
           debugLog(`mpv loadfile with title failed: ${error.message}, falling back to core.open`);
+          isReplacingPlayback = false;
           core.open(streamUrl);
         }
       } else {
@@ -1736,31 +1840,42 @@ event.on('iina.file-loaded', onFileLoaded);
 // Playback tracking events for Jellyfin progress sync
 event.on('mpv.time-pos.changed', handlePlaybackPositionChange);
 
+// Pause/unpause state sync
+event.on('mpv.pause.changed', handlePauseChange);
+
+// Handle file ending (includes both natural end and replacement)
+event.on('mpv.end-file', () => {
+  debugLog('mpv.end-file triggered, isReplacingPlayback=' + isReplacingPlayback);
+  if (isReplacingPlayback) {
+    // File is being replaced (e.g. episode transition) — don't send stop report
+    debugLog('File replacement in progress, skipping stop report');
+    isReplacingPlayback = false;
+    return;
+  }
+  stopPlaybackTracking();
+});
+
+// Handle EOF reached — mark as watched if near end
+event.on('mpv.eof-reached', () => {
+  debugLog('End of file reached (eof-reached)');
+  if (currentPlaybackSession && currentPlaybackSession.itemId) {
+    markAsWatched(
+      currentPlaybackSession.serverBase,
+      currentPlaybackSession.itemId,
+      currentPlaybackSession.apiKey
+    );
+  }
+});
+
 // Stop tracking when window closes
 event.on('iina.window-will-close', () => {
   debugLog('Window closing, stopping playback tracking');
   stopPlaybackTracking();
 });
 
-// Also handle file ended event
-event.on('mpv.eof-reached', () => {
-  debugLog('End of file reached');
-  // Mark as watched if we haven't already (in case we didn't hit 95% threshold)
-  if (currentPlaybackSession && currentPlaybackSession.itemId) {
-    const duration = core.status.duration || 0;
-    const position = core.status.position || 0;
-    // If near the end (within last 30 seconds or 95%+), mark as watched
-    if (
-      duration > 0 &&
-      (position >= duration - END_THRESHOLD_SECONDS || position / duration >= WATCHED_THRESHOLD)
-    ) {
-      markAsWatched(
-        currentPlaybackSession.serverBase,
-        currentPlaybackSession.itemId,
-        currentPlaybackSession.apiKey
-      );
-    }
-  }
+// Ensure we report stop on app termination
+event.on('iina.application-will-terminate', () => {
+  debugLog('Application terminating, stopping playback tracking');
   stopPlaybackTracking();
 });
 
