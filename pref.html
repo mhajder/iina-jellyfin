@@ -67,26 +67,8 @@
       </label>
       <p class="small secondary pref-help">
         Automatically extract server URL and API key from Jellyfin URLs (like download links) and
-        use them to auto-login to the sidebar browser. This eliminates the need to manually enter
-        credentials when you've already accessed Jellyfin content.
-      </p>
-    </div>
-
-    <div class="pref-section">
-      <label>
-        Session expiration (hours):
-        <input
-          type="number"
-          data-pref-key="session_max_age_hours"
-          min="1"
-          max="168"
-          value="24"
-          style="width: 60px; margin-left: 8px"
-        />
-      </label>
-      <p class="small secondary pref-help">
-        How long to keep stored session data before requiring re-authentication. Default is 24
-        hours, maximum is 168 hours (7 days).
+        use them to auto-login to the sidebar browser. Server credentials are stored permanently
+        until manually removed via the server management panel.
       </p>
     </div>
 
