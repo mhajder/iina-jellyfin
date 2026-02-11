@@ -47,6 +47,42 @@ function debugLog(message) {
   }
 }
 
+const CLIENT_NAME = 'IINA Jellyfin Plugin';
+const DEVICE_NAME = 'IINA';
+const CLIENT_VERSION = '0.0.1';
+
+function getDeviceId() {
+  let deviceId = preferences.get('jellyfin_device_id');
+  if (!deviceId) {
+    deviceId = `iina-jellyfin-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+    preferences.set('jellyfin_device_id', deviceId);
+    preferences.sync();
+  }
+  return deviceId;
+}
+
+function buildAuthorizationHeader(apiKey) {
+  const parts = [
+    `Client="${CLIENT_NAME}"`,
+    `Device="${DEVICE_NAME}"`,
+    `DeviceId="${getDeviceId()}"`,
+    `Version="${CLIENT_VERSION}"`,
+  ];
+
+  if (apiKey) {
+    parts.push(`Token="${apiKey}"`);
+  }
+
+  return `MediaBrowser ${parts.join(', ')}`;
+}
+
+function buildJellyfinHeaders(apiKey, extraHeaders) {
+  return {
+    Authorization: buildAuthorizationHeader(apiKey),
+    ...(extraHeaders || {}),
+  };
+}
+
 debugLog('Jellyfin Subtitles Plugin loaded');
 
 /**
@@ -146,9 +182,9 @@ async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     debugLog(`Fetching playback info from: ${playbackUrl}`);
 
     const response = await http.get(playbackUrl, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         Accept: 'application/json',
-      },
+      }),
     });
 
     debugLog(`Response received`);
@@ -185,9 +221,9 @@ async function fetchItemMetadata(serverBase, itemId, apiKey) {
     debugLog(`Fetching item metadata from: ${metadataUrl}`);
 
     const response = await http.get(metadataUrl, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         Accept: 'application/json',
-      },
+      }),
     });
 
     debugLog(`Metadata response received`);
@@ -328,10 +364,10 @@ async function reportPlaybackStart(serverBase, itemId, apiKey, playSessionId, me
     debugLog(`Reporting playback start for item: ${itemId}`);
 
     const response = await http.post(url, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
       data: {
         ItemId: itemId,
         MediaSourceId: mediaSourceId || itemId,
@@ -386,10 +422,10 @@ async function reportPlaybackProgress(
     const url = `${serverBase}/Sessions/Playing/Progress?api_key=${apiKey}`;
 
     const response = await http.post(url, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
       data: {
         ItemId: itemId,
         MediaSourceId: mediaSourceId || itemId,
@@ -443,10 +479,10 @@ async function reportPlaybackStop(
     debugLog(`Reporting playback stop: position=${positionSeconds}s (${positionTicks} ticks)`);
 
     const response = await http.post(url, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
       data: {
         ItemId: itemId,
         MediaSourceId: mediaSourceId || itemId,
@@ -489,10 +525,10 @@ async function markAsWatched(serverBase, itemId, apiKey) {
     debugLog(`Marking item as watched: ${itemId}`);
 
     const response = await http.post(url, {
-      headers: {
+      headers: buildJellyfinHeaders(apiKey, {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      },
+      }),
     });
 
     if (response.statusCode >= 400) {
@@ -851,9 +887,9 @@ async function fetchSeriesEpisodes(serverBase, seriesId, seasonId, apiKey) {
     const response = await http.get(
       `${serverBase}/Shows/${seriesId}/Episodes?${queryParams}&api_key=${apiKey}`,
       {
-        headers: {
+        headers: buildJellyfinHeaders(apiKey, {
           Accept: 'application/json',
-        },
+        }),
       }
     );
 
