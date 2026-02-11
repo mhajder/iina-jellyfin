@@ -160,8 +160,12 @@ class JellyfinSidebar {
         document.getElementById(tabName + 'Tab').classList.add('active');
 
         // Load content if needed
-        if (tabName === 'recent' && this.currentUser) {
-          this.loadRecentItems();
+        if (tabName === 'home' && this.currentUser) {
+          this.loadHomeTab();
+        } else if (tabName === 'movies' && this.currentUser) {
+          this.loadMovies();
+        } else if (tabName === 'series' && this.currentUser) {
+          this.loadSeries();
         }
       });
     });
@@ -264,7 +268,7 @@ class JellyfinSidebar {
           this.showMainContent();
           this.showLogoutButton();
           this.updateServerStatus(`Auto-connected as ${this.currentUser.Name}`, 'connected');
-          this.loadRecentItems();
+          this.loadHomeTab();
 
           return;
         }
@@ -391,7 +395,7 @@ class JellyfinSidebar {
         this.showMainContent();
         this.showLogoutButton();
         this.updateServerStatus(`Connected as ${authResult.user.Name}`, 'connected');
-        this.loadRecentItems();
+        this.loadHomeTab();
       } else {
         debugLog('Authentication failed: ' + authResult.error);
         errorEl.textContent = authResult.error || 'Login failed';
@@ -626,6 +630,168 @@ class JellyfinSidebar {
     } catch (error) {
       debugLog('Error loading recent items:', error);
       recentList.innerHTML = '<div class="error">Failed to load recent items</div>';
+    }
+  }
+
+  /**
+   * Load the Home tab with Continue Watching, Up Next, and Recently Added
+   */
+  async loadHomeTab() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    // Load all three sections in parallel
+    await Promise.all([this.loadContinueWatching(), this.loadNextUp(), this.loadRecentItems()]);
+  }
+
+  /**
+   * Load Continue Watching (resume) items
+   */
+  async loadContinueWatching() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    const container = document.getElementById('continueWatchingList');
+    container.innerHTML = '<div class="loading">Loading...</div>';
+
+    try {
+      const params = new URLSearchParams({
+        Limit: 10,
+        MediaTypes: 'Video',
+        Fields:
+          'Overview,UserData,RunTimeTicks,SeriesName,ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,ImageTags,BackdropImageTags',
+      });
+
+      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items/Resume?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMediaList(response.data.Items, container);
+      } else {
+        container.innerHTML = '<div class="empty-state">Nothing to resume</div>';
+      }
+    } catch (error) {
+      debugLog('Error loading continue watching:', error);
+      container.innerHTML = '<div class="error">Failed to load</div>';
+    }
+  }
+
+  /**
+   * Load Next Up episodes (next unwatched episodes in series the user is watching)
+   */
+  async loadNextUp() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    const container = document.getElementById('nextUpList');
+    container.innerHTML = '<div class="loading">Loading...</div>';
+
+    try {
+      const params = new URLSearchParams({
+        UserId: this.currentUser.Id,
+        Limit: 10,
+        Fields:
+          'Overview,UserData,RunTimeTicks,SeriesName,ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,ImageTags,BackdropImageTags',
+      });
+
+      const fullUrl = `${this.currentServer.url}/Shows/NextUp?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMediaList(response.data.Items, container);
+      } else {
+        container.innerHTML = '<div class="empty-state">No upcoming episodes</div>';
+      }
+    } catch (error) {
+      debugLog('Error loading next up:', error);
+      container.innerHTML = '<div class="error">Failed to load</div>';
+    }
+  }
+
+  /**
+   * Load all movies from the user's libraries
+   */
+  async loadMovies() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    const container = document.getElementById('moviesList');
+    container.innerHTML = '<div class="loading">Loading movies...</div>';
+
+    try {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        IncludeItemTypes: 'Movie',
+        Recursive: true,
+        SortBy: 'SortName',
+        SortOrder: 'Ascending',
+        Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags',
+        EnableImageTypes: 'Primary,Backdrop,Thumb',
+        Limit: 50,
+      });
+
+      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMediaList(response.data.Items, container);
+      } else {
+        container.innerHTML = '<div class="empty-state">No movies found</div>';
+      }
+    } catch (error) {
+      debugLog('Error loading movies:', error);
+      container.innerHTML = '<div class="error">Failed to load movies</div>';
+    }
+  }
+
+  /**
+   * Load all series from the user's libraries
+   */
+  async loadSeries() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    const container = document.getElementById('seriesList');
+    container.innerHTML = '<div class="loading">Loading series...</div>';
+
+    try {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        IncludeItemTypes: 'Series',
+        Recursive: true,
+        SortBy: 'SortName',
+        SortOrder: 'Ascending',
+        Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags',
+        EnableImageTypes: 'Primary,Backdrop,Thumb',
+        Limit: 50,
+      });
+
+      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMediaList(response.data.Items, container);
+      } else {
+        container.innerHTML = '<div class="empty-state">No series found</div>';
+      }
+    } catch (error) {
+      debugLog('Error loading series:', error);
+      container.innerHTML = '<div class="error">Failed to load series</div>';
     }
   }
 
