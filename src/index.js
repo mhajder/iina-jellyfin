@@ -24,7 +24,8 @@ let lastJellyfinUrl = null;
 let lastItemId = null;
 let lastProcessedEpisodeId = null; // Track last processed episode to prevent duplicates
 let lastProcessedSeriesId = null; // Track last series to detect series changes
-const addedEpisodeIds = new Set(); // Track episodes already added to playlist
+let autoplayRequestCounter = 0; // Monotonic counter for invalidating stale autoplay requests
+let autoplayQueued = false; // Whether next episode has been queued in mpv playlist
 
 // Playback tracking state
 let currentPlaybackSession = null; // Current Jellyfin playback session info
@@ -975,125 +976,138 @@ async function getSeriesInfoFromEpisode(serverBase, episodeId, apiKey) {
 }
 
 /**
- * Add episodes to the IINA playlist starting from the next episode
- * This creates a playlist of remaining episodes in the series
+ * Resolve the next episode to play, with cross-season support.
+ * First looks for the next episode in the current season.
+ * If not found, finds the first episode of the next season.
  */
-async function addEpisodesToPlaylist(
-  serverBase,
-  seriesId,
-  seasonId,
-  seasonNumber,
-  currentEpisodeNumber,
-  seriesName,
-  apiKey
-) {
+async function resolveNextEpisode(serverBase, seriesId, seasonId, currentEpisodeNumber, apiKey) {
   try {
-    debugLog(`Adding episodes to playlist AFTER episode ${currentEpisodeNumber}`);
-
-    // Ensure currentEpisodeNumber is a number
-    const currentEpNum = Number(currentEpisodeNumber);
-    debugLog(`Current episode number (type: ${typeof currentEpNum}): ${currentEpNum}`);
-
-    // Fetch all episodes for this season
+    // Step 1: Look for next episode in current season
     const episodes = await fetchSeriesEpisodes(serverBase, seriesId, seasonId, apiKey);
+    const currentEpNum = Number(currentEpisodeNumber);
+    const nextEpisode = episodes.find((ep) => ep.indexNumber === currentEpNum + 1);
 
-    if (episodes.length === 0) {
-      debugLog('No episodes found to add to playlist');
-      return 0;
+    if (nextEpisode) {
+      debugLog(
+        `Found next episode in current season: E${nextEpisode.indexNumber} - ${nextEpisode.name}`
+      );
+      return nextEpisode;
     }
 
-    debugLog(`Total episodes fetched: ${episodes.length}, current episode: ${currentEpNum}`);
-    debugLog(`Episode index numbers available: ${episodes.map((e) => e.indexNumber).join(', ')}`);
+    debugLog('No next episode in current season, checking next season...');
 
-    // Filter to episodes AFTER the current one (not including current)
-    const remainingEpisodes = episodes.filter((ep) => {
-      const include = ep.indexNumber > currentEpNum;
-      if (ep.indexNumber >= currentEpNum - 1 && ep.indexNumber <= currentEpNum + 1) {
-        debugLog(
-          `Filtering: E${ep.indexNumber} (${typeof ep.indexNumber}) > ${currentEpNum} (${typeof currentEpNum}) = ${include}`
-        );
+    // Step 2: Fetch all seasons for the series
+    const seasonsResponse = await http.get(
+      `${serverBase}/Shows/${seriesId}/Seasons?api_key=${apiKey}`,
+      {
+        headers: buildJellyfinHeaders(apiKey, { Accept: 'application/json' }),
       }
-      return include;
-    });
-
-    debugLog(
-      `After filtering (indexNumber > ${currentEpisodeNumber}): ${remainingEpisodes.map((e) => `E${e.indexNumber}`).join(', ')}`
     );
 
-    if (remainingEpisodes.length === 0) {
-      debugLog('No remaining episodes after the current one');
-      return 0;
+    if (!seasonsResponse.data) return null;
+
+    const seasonsData =
+      typeof seasonsResponse.data === 'string'
+        ? JSON.parse(seasonsResponse.data)
+        : seasonsResponse.data;
+
+    if (!seasonsData.Items || seasonsData.Items.length === 0) return null;
+
+    // Sort seasons by IndexNumber
+    const sortedSeasons = seasonsData.Items.filter(
+      (s) => s.IndexNumber !== null && s.IndexNumber !== undefined
+    ).sort((a, b) => (a.IndexNumber || 0) - (b.IndexNumber || 0));
+
+    // Step 3: Find current season and get the next one
+    const currentSeasonIndex = sortedSeasons.findIndex((s) => s.Id === seasonId);
+    if (currentSeasonIndex === -1 || currentSeasonIndex >= sortedSeasons.length - 1) {
+      debugLog('No next season available — end of series');
+      return null;
     }
 
-    // Clear existing playlist items for this series to avoid stale titles
-    // This ensures we rebuild the playlist from scratch when moving to a new episode
+    const nextSeason = sortedSeasons[currentSeasonIndex + 1];
+    debugLog(`Found next season: ${nextSeason.Name} (S${nextSeason.IndexNumber})`);
+
+    // Step 4: Fetch episodes from the next season and return the first one
+    const nextSeasonEpisodes = await fetchSeriesEpisodes(
+      serverBase,
+      seriesId,
+      nextSeason.Id,
+      apiKey
+    );
+
+    if (nextSeasonEpisodes.length === 0) {
+      debugLog('Next season has no episodes');
+      return null;
+    }
+
+    // Episodes are already sorted by indexNumber from fetchSeriesEpisodes
+    const firstEpisode = nextSeasonEpisodes[0];
+    debugLog(
+      `Found first episode of next season: S${nextSeason.IndexNumber}E${firstEpisode.indexNumber} - ${firstEpisode.name}`
+    );
+
+    // Attach season info for title formatting
+    firstEpisode.seasonNumber = nextSeason.IndexNumber;
+
+    return firstEpisode;
+  } catch (error) {
+    debugLog(`Error resolving next episode: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Queue the next episode in the mpv playlist using insert-next.
+ * Only queues a single episode — the cycle repeats when that episode starts playing.
+ */
+function queueNextEpisode(nextEpisode, seriesName, seasonNumber) {
+  try {
+    // Build descriptive title
+    const seCode = `S${String(seasonNumber).padStart(2, '0')}E${String(nextEpisode.indexNumber).padStart(2, '0')}`;
+    const episodeTitle = seriesName
+      ? `${seriesName} ${seCode} - ${nextEpisode.name}`
+      : `${seCode} - ${nextEpisode.name}`;
+
+    debugLog(`Queuing next episode: ${episodeTitle}`);
+
+    // First, remove any entries after the current one in the playlist
     try {
-      if (playlist && typeof playlist.clear === 'function') {
-        debugLog('Clearing existing playlist');
-        playlist.clear();
-        addedEpisodeIds.clear(); // Clear our tracking too
-      }
-    } catch (error) {
-      debugLog(`Could not clear playlist (API might not support it): ${error.message}`);
-      // Continue anyway - we'll just skip already-added items
-    }
+      const playlistCount = Number(mpv.getNumber('playlist-count') || 0);
+      const currentPos = Number(mpv.getNumber('playlist-pos') || 0);
 
-    debugLog(`Adding ${remainingEpisodes.length} episodes to playlist`);
-
-    let addedCount = 0;
-    for (const episode of remainingEpisodes) {
-      try {
-        // Skip if already added in this session (in case clear didn't work)
-        if (addedEpisodeIds.has(episode.id)) {
-          debugLog(`Episode ${episode.indexNumber} (${episode.id}) already in playlist, skipping`);
-          continue;
-        }
-
-        debugLog(`Adding episode ${episode.indexNumber}: ${episode.name} to playlist`);
-
-        // Build a descriptive title for the playlist entry (include series name)
-        const seCode = `S${String(seasonNumber).padStart(2, '0')}E${String(episode.indexNumber).padStart(2, '0')}`;
-        const episodeTitle = seriesName
-          ? `${seriesName} ${seCode} - ${episode.name}`
-          : `${seCode} - ${episode.name}`;
-
-        // Use mpv loadfile with force-media-title to set title for each playlist entry
-        // playlist.add() only accepts a URL and doesn't support setting titles
-        try {
-          mpv.command('loadfile', [
-            episode.playUrl,
-            'append',
-            '-1',
-            `force-media-title=${episodeTitle}`,
-          ]);
-          debugLog(`Added episode to playlist: ${episodeTitle}`);
-        } catch (error) {
-          debugLog(`Failed to add episode via mpv loadfile: ${error.message}`);
-          // Fallback to playlist.add()
+      if (playlistCount > currentPos + 1) {
+        // Remove entries from the end to avoid index shifting
+        for (let i = playlistCount - 1; i > currentPos; i--) {
           try {
-            playlist.add(episode.playUrl);
-            debugLog(`Added episode via playlist.add fallback: ${episode.playUrl}`);
-          } catch (fallbackError) {
-            debugLog(`Fallback playlist.add also failed: ${fallbackError.message}`);
+            mpv.command('playlist-remove', [String(i)]);
+          } catch {
+            // Ignore removal errors
           }
         }
-
-        // Track this episode as added
-        addedEpisodeIds.add(episode.id);
-        addedCount++;
-      } catch (error) {
-        debugLog(`Failed to add episode ${episode.indexNumber} to playlist: ${error.message}`);
+        debugLog(`Cleaned ${playlistCount - currentPos - 1} stale playlist entries`);
       }
+    } catch {
+      debugLog('Could not clean playlist (non-critical)');
     }
 
-    if (addedCount > 0 && preferences.get('show_notifications')) {
-      core.osd(`Added ${addedCount} episodes to playlist`);
-    }
+    // Insert exactly one episode after current using insert-next
+    mpv.command('loadfile', [
+      nextEpisode.playUrl,
+      'insert-next',
+      '-1',
+      `force-media-title=${episodeTitle}`,
+    ]);
 
-    return addedCount;
+    autoplayQueued = true;
+
+    debugLog(`Queued next episode: ${episodeTitle}`);
+
+    if (preferences.get('show_notifications')) {
+      core.osd(`Up next: ${episodeTitle}`);
+    }
   } catch (error) {
-    debugLog(`Error adding episodes to playlist: ${error.message}`);
-    return 0;
+    debugLog(`Error queuing next episode: ${error.message}`);
   }
 }
 
@@ -1318,33 +1332,206 @@ async function downloadAllSubtitles(serverBase, itemId, apiKey) {
   }
 }
 
+// ===== Multi-Server Management =====
+
 /**
- * Store Jellyfin session data for auto-login
+ * Load all stored servers from preferences
+ * @returns {Array} Array of server objects
+ */
+function loadStoredServers() {
+  try {
+    const serversJson = preferences.get('jellyfin_servers');
+    if (!serversJson) return [];
+    const servers = typeof serversJson === 'string' ? JSON.parse(serversJson) : serversJson;
+    if (!Array.isArray(servers)) return [];
+
+    // Clean up ghost entries (legacy entries without userId)
+    const validServers = servers.filter((s) => s.userId);
+    if (validServers.length !== servers.length) {
+      debugLog(
+        `Cleaned ${servers.length - validServers.length} ghost server entries without userId`
+      );
+      saveStoredServers(validServers);
+    }
+    return validServers;
+  } catch {
+    debugLog('Error loading stored servers, returning empty array');
+    return [];
+  }
+}
+
+/**
+ * Save servers array to preferences
+ * @param {Array} servers - Array of server objects
+ */
+function saveStoredServers(servers) {
+  try {
+    preferences.set('jellyfin_servers', JSON.stringify(servers));
+    preferences.sync();
+    debugLog(`Saved ${servers.length} server(s) to preferences`);
+  } catch (error) {
+    debugLog(`Error saving servers: ${error.message}`);
+  }
+}
+
+/**
+ * Get the active server ID
+ * @returns {string|null}
+ */
+function getActiveServerId() {
+  return preferences.get('jellyfin_active_server_id') || null;
+}
+
+/**
+ * Set the active server ID
+ * @param {string|null} serverId
+ */
+function setActiveServerId(serverId) {
+  preferences.set('jellyfin_active_server_id', serverId || '');
+  preferences.sync();
+}
+
+/**
+ * Add or update a server in storage
+ * Matches by URL + userId so different users on the same server are separate entries
+ * @param {object} serverData - { serverUrl, accessToken, serverName, userId, username }
+ * @returns {object} The stored server object
+ */
+function addOrUpdateServer(serverData) {
+  try {
+    const servers = loadStoredServers();
+    const normalizedUrl = serverData.serverUrl.replace(/\/$/, '');
+
+    // Find existing server by URL AND userId (different users = different entries)
+    const existingIndex = servers.findIndex(
+      (s) =>
+        s.serverUrl.replace(/\/$/, '') === normalizedUrl &&
+        ((serverData.userId && s.userId === serverData.userId) || (!serverData.userId && !s.userId))
+    );
+
+    const serverEntry = {
+      id: existingIndex >= 0 ? servers[existingIndex].id : `srv-${Date.now()}`,
+      serverUrl: normalizedUrl,
+      serverName: serverData.serverName || normalizedUrl,
+      accessToken: serverData.accessToken,
+      userId: serverData.userId || '',
+      username: serverData.username || '',
+      addedAt: existingIndex >= 0 ? servers[existingIndex].addedAt : Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    if (existingIndex >= 0) {
+      servers[existingIndex] = serverEntry;
+      debugLog(`Updated existing server: ${serverEntry.serverName}`);
+    } else {
+      servers.push(serverEntry);
+      debugLog(`Added new server: ${serverEntry.serverName}`);
+    }
+
+    saveStoredServers(servers);
+
+    // Set as active if it's the only server or no active server is set
+    if (servers.length === 1 || !getActiveServerId()) {
+      setActiveServerId(serverEntry.id);
+    }
+
+    return serverEntry;
+  } catch (error) {
+    debugLog(`Error adding/updating server: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Remove a server from storage
+ * @param {string} serverId - ID of the server to remove
+ */
+function removeServer(serverId) {
+  try {
+    let servers = loadStoredServers();
+    servers = servers.filter((s) => s.id !== serverId);
+    saveStoredServers(servers);
+
+    // If the removed server was active, switch to the first available
+    if (getActiveServerId() === serverId) {
+      setActiveServerId(servers.length > 0 ? servers[0].id : null);
+    }
+
+    debugLog(`Removed server: ${serverId}`);
+
+    // Notify sidebar
+    if (sidebar && sidebar.postMessage) {
+      sidebar.postMessage('servers-updated', { servers, activeServerId: getActiveServerId() });
+    }
+  } catch (error) {
+    debugLog(`Error removing server: ${error.message}`);
+  }
+}
+
+/**
+ * Get the currently active server
+ * @returns {object|null} The active server object
+ */
+function getActiveServer() {
+  try {
+    const servers = loadStoredServers();
+    const activeId = getActiveServerId();
+    if (activeId) {
+      const active = servers.find((s) => s.id === activeId);
+      if (active) return active;
+    }
+    // Fallback to first server
+    return servers.length > 0 ? servers[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Switch active server
+ * @param {string} serverId - ID of the server to activate
+ */
+function switchActiveServer(serverId) {
+  const servers = loadStoredServers();
+  const server = servers.find((s) => s.id === serverId);
+  if (server) {
+    setActiveServerId(serverId);
+    debugLog(`Switched active server to: ${server.serverName}`);
+
+    // Notify sidebar
+    if (sidebar && sidebar.postMessage) {
+      sidebar.postMessage('server-switched', {
+        server: server,
+        servers: servers,
+        activeServerId: serverId,
+      });
+    }
+  }
+}
+
+// Legacy compatibility wrappers
+
+/**
+ * Store Jellyfin session data — adds/updates server in multi-server storage
  */
 function storeJellyfinSession(serverBase, apiKey) {
   try {
-    if (!preferences.get('auto_login_enabled')) {
-      debugLog('Auto-login disabled, not storing session data');
-      return;
-    }
-
     debugLog(`Storing Jellyfin session data for: ${serverBase}`);
 
-    // Store session data in preferences
-    preferences.set('jellyfin_session_server', serverBase);
-    preferences.set('jellyfin_session_token', apiKey);
-    preferences.set('jellyfin_session_timestamp', Date.now());
-    preferences.sync();
+    const server = addOrUpdateServer({
+      serverUrl: serverBase,
+      accessToken: apiKey,
+    });
 
-    debugLog('Jellyfin session data stored successfully');
-
-    // Notify sidebar about available session
-    if (sidebar && sidebar.postMessage) {
-      sidebar.postMessage('session-available', {
-        serverUrl: serverBase,
-        accessToken: apiKey,
-        timestamp: Date.now(),
-      });
+    if (server) {
+      // Notify sidebar about available session (backward compatible)
+      if (sidebar && sidebar.postMessage) {
+        sidebar.postMessage('session-available', {
+          serverUrl: server.serverUrl,
+          accessToken: server.accessToken,
+          serverId: server.id,
+        });
+      }
     }
   } catch (error) {
     debugLog(`Error storing Jellyfin session: ${error.message}`);
@@ -1352,17 +1539,15 @@ function storeJellyfinSession(serverBase, apiKey) {
 }
 
 /**
- * Clear stored Jellyfin session data
+ * Clear all stored Jellyfin session data
  */
 function clearJellyfinSession() {
   try {
-    debugLog('Clearing Jellyfin session data');
-    preferences.set('jellyfin_session_server', '');
-    preferences.set('jellyfin_session_token', '');
-    preferences.set('jellyfin_session_timestamp', 0);
-    preferences.sync();
+    debugLog('Clearing all Jellyfin session data');
+    saveStoredServers([]);
+    setActiveServerId(null);
 
-    // Notify sidebar about cleared session
+    // Notify sidebar
     if (sidebar && sidebar.postMessage) {
       sidebar.postMessage('session-cleared', {});
     }
@@ -1372,39 +1557,24 @@ function clearJellyfinSession() {
 }
 
 /**
- * Get stored Jellyfin session data if valid
+ * Get stored Jellyfin session data (active server) — backward compatible
  */
 function getStoredJellyfinSession() {
   try {
-    if (!preferences.get('auto_login_enabled')) {
-      debugLog('Auto-login disabled, not retrieving session data');
+    const server = getActiveServer();
+    if (!server) {
+      debugLog('No stored server found');
       return null;
     }
 
-    const serverUrl = preferences.get('jellyfin_session_server');
-    const accessToken = preferences.get('jellyfin_session_token');
-    const timestamp = preferences.get('jellyfin_session_timestamp') || 0;
-
-    if (!serverUrl || !accessToken) {
-      debugLog('No valid session data found');
-      return null;
-    }
-
-    // Check if session is not too old (24 hours)
-    const maxAge = preferences.get('session_max_age_hours') || 24;
-    const sessionAge = (Date.now() - timestamp) / (1000 * 60 * 60); // hours
-
-    if (sessionAge > maxAge) {
-      debugLog(`Session too old (${sessionAge.toFixed(1)} hours), clearing`);
-      clearJellyfinSession();
-      return null;
-    }
-
-    debugLog(`Retrieved valid session data for: ${serverUrl}`);
+    debugLog(`Retrieved active server: ${server.serverName} (${server.serverUrl})`);
     return {
-      serverUrl,
-      accessToken,
-      timestamp,
+      serverUrl: server.serverUrl,
+      accessToken: server.accessToken,
+      serverId: server.id,
+      serverName: server.serverName,
+      userId: server.userId,
+      username: server.username,
     };
   } catch (error) {
     debugLog(`Error retrieving Jellyfin session: ${error.message}`);
@@ -1478,7 +1648,7 @@ function onFileLoaded(fileUrl) {
 
 /**
  * Setup autoplay for a TV episode
- * This fetches series info and adds remaining episodes to the playlist
+ * Resolves the next episode (with cross-season support) and queues it using insert-next
  */
 function setupAutoplayForEpisode(serverBase, episodeId, apiKey) {
   // Check if we're already processing this episode (prevents duplicates)
@@ -1490,13 +1660,28 @@ function setupAutoplayForEpisode(serverBase, episodeId, apiKey) {
   // Mark this episode as being processed
   lastProcessedEpisodeId = episodeId;
 
+  // Reset autoplay state for the new episode
+  autoplayQueued = false;
+
+  // Increment the request counter to invalidate any stale async operations
+  autoplayRequestCounter++;
+  const thisRequestId = autoplayRequestCounter;
+
   // Run async operation without blocking
   (async () => {
     try {
-      debugLog(`Setting up autoplay for episode: ${episodeId}`);
+      debugLog(`Setting up autoplay for episode: ${episodeId} (request #${thisRequestId})`);
 
       // Get series and season info from episode metadata
       const seriesInfo = await getSeriesInfoFromEpisode(serverBase, episodeId, apiKey);
+
+      // Check if this request is still current (another episode may have started)
+      if (thisRequestId !== autoplayRequestCounter) {
+        debugLog(
+          `Autoplay request #${thisRequestId} is stale (current: #${autoplayRequestCounter}), aborting`
+        );
+        return;
+      }
 
       if (!seriesInfo) {
         debugLog('Could not get series info, autoplay not available');
@@ -1507,30 +1692,40 @@ function setupAutoplayForEpisode(serverBase, episodeId, apiKey) {
         `Got series info: series=${seriesInfo.seriesId}, season=${seriesInfo.seasonId}, seasonNum=${seriesInfo.seasonNumber}, currentEp=${seriesInfo.currentEpisodeNumber}`
       );
 
-      // If we switched to a different series, clear the episode tracking
+      // If we switched to a different series, reset tracking
       if (lastProcessedSeriesId !== seriesInfo.seriesId) {
-        debugLog(
-          `Series changed from ${lastProcessedSeriesId} to ${seriesInfo.seriesId}, clearing episode tracking`
-        );
-        addedEpisodeIds.clear();
+        debugLog(`Series changed from ${lastProcessedSeriesId} to ${seriesInfo.seriesId}`);
         lastProcessedSeriesId = seriesInfo.seriesId;
       }
 
       // Store episode info for later reference
       storeCurrentEpisodeInfo(episodeId, seriesInfo);
 
-      // Add remaining episodes to playlist (pass season number and name for proper formatting)
-      const addedCount = await addEpisodesToPlaylist(
+      // Resolve the next episode (with cross-season support)
+      const nextEpisode = await resolveNextEpisode(
         serverBase,
         seriesInfo.seriesId,
         seriesInfo.seasonId,
-        seriesInfo.seasonNumber,
         seriesInfo.currentEpisodeNumber,
-        seriesInfo.seriesName,
         apiKey
       );
 
-      debugLog(`Autoplay setup complete, added ${addedCount} episodes to playlist`);
+      // Check again if this request is still current
+      if (thisRequestId !== autoplayRequestCounter) {
+        debugLog(`Autoplay request #${thisRequestId} is stale after resolve, aborting`);
+        return;
+      }
+
+      if (!nextEpisode) {
+        debugLog('No next episode found — end of series');
+        return;
+      }
+
+      // Queue just the next episode using insert-next
+      const seasonNum = nextEpisode.seasonNumber || seriesInfo.seasonNumber;
+      queueNextEpisode(nextEpisode, seriesInfo.seriesName, seasonNum);
+
+      debugLog(`Autoplay setup complete — queued next episode: ${nextEpisode.name}`);
     } catch (error) {
       debugLog(`Error setting up autoplay: ${error.message}`);
     }
@@ -1715,7 +1910,55 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     standaloneWindow.onMessage('store-session', (data) => {
       if (data && data.serverUrl && data.accessToken) {
-        storeJellyfinSession(data.serverUrl, data.accessToken);
+        const server = addOrUpdateServer({
+          serverUrl: data.serverUrl,
+          accessToken: data.accessToken,
+          serverName: data.serverName || '',
+          userId: data.userId || '',
+          username: data.username || '',
+        });
+        if (server) {
+          setActiveServerId(server.id);
+          standaloneWindow.postMessage('servers-updated', {
+            servers: loadStoredServers(),
+            activeServerId: server.id,
+          });
+        }
+      }
+    });
+
+    // Multi-server management messages
+    standaloneWindow.onMessage('get-servers', () => {
+      const servers = loadStoredServers();
+      const activeServerId = getActiveServerId();
+      standaloneWindow.postMessage('servers-list', { servers, activeServerId });
+    });
+
+    standaloneWindow.onMessage('remove-server', (data) => {
+      if (data && data.serverId) {
+        removeServer(data.serverId);
+        // Also notify standalone window (removeServer only notifies sidebar)
+        standaloneWindow.postMessage('servers-updated', {
+          servers: loadStoredServers(),
+          activeServerId: getActiveServerId(),
+        });
+      }
+    });
+
+    standaloneWindow.onMessage('switch-server', (data) => {
+      if (data && data.serverId) {
+        switchActiveServer(data.serverId);
+      }
+    });
+
+    standaloneWindow.onMessage('open-external-url', (data) => {
+      if (data && data.url) {
+        debugLog(`Opening external URL from standalone: ${data.url}`);
+        try {
+          utils.open(data.url);
+        } catch (error) {
+          debugLog(`Failed to open external URL: ${error.message}`);
+        }
       }
     });
 
@@ -1724,7 +1967,14 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     // Send session data after a brief delay
     setTimeout(() => {
-      standaloneWindow.postMessage('session-available', sessionData);
+      // Send multi-server list (sidebar will auto-connect to active server)
+      const servers = loadStoredServers();
+      const activeServerId = getActiveServerId();
+      standaloneWindow.postMessage('servers-list', { servers, activeServerId });
+      // Also send legacy session for backward compatibility
+      if (sessionData) {
+        standaloneWindow.postMessage('session-available', sessionData);
+      }
     }, 1000);
 
     debugLog('Standalone Jellyfin browser window opened successfully');
@@ -1825,8 +2075,9 @@ function handlePlayMedia(message) {
       try {
         if (playlist && typeof playlist.clear === 'function') {
           playlist.clear();
-          addedEpisodeIds.clear();
         }
+        // Reset autoplay state when starting new playback
+        autoplayQueued = false;
       } catch (clearError) {
         debugLog(`Could not clear playlist before opening: ${clearError.message}`);
       }
@@ -1881,11 +2132,23 @@ event.on('mpv.pause.changed', handlePauseChange);
 
 // Handle file ending (includes both natural end and replacement)
 event.on('mpv.end-file', () => {
-  debugLog('mpv.end-file triggered, isReplacingPlayback=' + isReplacingPlayback);
+  debugLog(
+    'mpv.end-file triggered, isReplacingPlayback=' +
+      isReplacingPlayback +
+      ', autoplayQueued=' +
+      autoplayQueued
+  );
   if (isReplacingPlayback) {
     // File is being replaced (e.g. episode transition) — don't send stop report
     debugLog('File replacement in progress, skipping stop report');
     isReplacingPlayback = false;
+    return;
+  }
+  if (autoplayQueued) {
+    // Next episode is queued via insert-next — mpv will auto-advance
+    debugLog('Autoplay queued, mpv will play next episode — skipping stop cleanup');
+    // Reset for the next cycle (setupAutoplayForEpisode will re-set these)
+    autoplayQueued = false;
     return;
   }
   stopPlaybackTracking();
@@ -1922,7 +2185,7 @@ event.on('iina.window-loaded', () => {
   // Set up message handler for sidebar playback requests
   sidebar.onMessage('play-media', handlePlayMedia);
 
-  // Handle session requests from sidebar
+  // Handle session requests from sidebar (backward compatible)
   sidebar.onMessage('get-session', () => {
     const sessionData = getStoredJellyfinSession();
     sidebar.postMessage('session-data', sessionData);
@@ -1936,7 +2199,40 @@ event.on('iina.window-loaded', () => {
   // Handle session storage requests from sidebar (manual login)
   sidebar.onMessage('store-session', (data) => {
     if (data && data.serverUrl && data.accessToken) {
-      storeJellyfinSession(data.serverUrl, data.accessToken);
+      const server = addOrUpdateServer({
+        serverUrl: data.serverUrl,
+        accessToken: data.accessToken,
+        serverName: data.serverName || '',
+        userId: data.userId || '',
+        username: data.username || '',
+      });
+      if (server) {
+        setActiveServerId(server.id);
+        // Send back updated server list
+        sidebar.postMessage('servers-updated', {
+          servers: loadStoredServers(),
+          activeServerId: server.id,
+        });
+      }
+    }
+  });
+
+  // Multi-server management messages
+  sidebar.onMessage('get-servers', () => {
+    const servers = loadStoredServers();
+    const activeServerId = getActiveServerId();
+    sidebar.postMessage('servers-list', { servers, activeServerId });
+  });
+
+  sidebar.onMessage('remove-server', (data) => {
+    if (data && data.serverId) {
+      removeServer(data.serverId);
+    }
+  });
+
+  sidebar.onMessage('switch-server', (data) => {
+    if (data && data.serverId) {
+      switchActiveServer(data.serverId);
     }
   });
 
@@ -1945,7 +2241,6 @@ event.on('iina.window-loaded', () => {
     if (data && data.url) {
       debugLog(`Opening external URL: ${data.url}`);
       try {
-        // Use IINA's utils.open to open in default browser
         const success = utils.open(data.url);
         if (success) {
           debugLog('Successfully opened URL in browser');
@@ -1959,8 +2254,6 @@ event.on('iina.window-loaded', () => {
         }
       } catch (error) {
         debugLog(`Failed to open external URL: ${error.message}`);
-
-        // Show error message
         core.osd('Failed to open Jellyfin page in browser');
         debugLog(`URL that failed to open: ${data.url}`);
       }
@@ -1975,8 +2268,14 @@ event.on('iina.window-loaded', () => {
     handlePlayMedia({ streamUrl, title });
   };
 
-  // Send initial session data to sidebar after a brief delay
+  // Send initial server data to sidebar after a brief delay
   setTimeout(() => {
+    const servers = loadStoredServers();
+    const activeServerId = getActiveServerId();
+    if (servers.length > 0) {
+      sidebar.postMessage('servers-list', { servers, activeServerId });
+    }
+    // Also send backward compatible session-available for auto-login
     const sessionData = getStoredJellyfinSession();
     if (sessionData) {
       sidebar.postMessage('session-available', sessionData);

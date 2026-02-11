@@ -69,6 +69,88 @@
         color: #f59e0b;
       }
 
+      /* Saved Server List */
+      .saved-server-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 6px;
+      }
+
+      .saved-server-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: #333;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: background 0.15s;
+      }
+
+      .saved-server-item:hover {
+        background: #3d3d3d;
+      }
+
+      .saved-server-item.active {
+        background: #2d4a2d;
+        border: 1px solid #4ade80;
+      }
+
+      .saved-server-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #555;
+        flex-shrink: 0;
+      }
+
+      .saved-server-item.active .saved-server-dot {
+        background: #4ade80;
+      }
+
+      .saved-server-info {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .saved-server-name {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .saved-server-url {
+        font-size: 10px;
+        color: #888;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .saved-server-user {
+        font-size: 10px;
+        color: #aaa;
+      }
+
+      .server-remove-btn {
+        background: none;
+        border: 1px solid #ef4444;
+        border-radius: 4px;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 10px;
+        padding: 3px 6px;
+        flex-shrink: 0;
+      }
+
+      .server-remove-btn:hover {
+        background: rgba(239, 68, 68, 0.2);
+      }
+
       /* Login Section */
       .login-section {
         border: 1px solid #333;
@@ -156,6 +238,101 @@
         border-radius: 6px;
         padding: 12px;
         background: #2a2a2a;
+      }
+
+      /* Login Method Tabs */
+      .login-method-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 10px;
+        border: 1px solid #555;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .login-method-tab {
+        flex: 1;
+        padding: 6px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        background: #3a3a3a;
+        color: #aaa;
+        border: none;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .login-method-tab:not(:last-child) {
+        border-right: 1px solid #555;
+      }
+
+      .login-method-tab.active {
+        background: #0066cc;
+        color: #fff;
+      }
+
+      .login-method-tab:hover:not(.active) {
+        background: #444;
+        color: #ccc;
+      }
+
+      /* Quick Connect Styles */
+      .qc-code-container {
+        text-align: center;
+        padding: 12px;
+        background: #333;
+        border-radius: 6px;
+        margin: 8px 0;
+      }
+
+      .qc-code-label {
+        font-size: 11px;
+        color: #aaa;
+        margin-bottom: 8px;
+      }
+
+      .qc-code {
+        font-size: 28px;
+        font-weight: 700;
+        font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+        color: #4ade80;
+        letter-spacing: 4px;
+        padding: 8px 0;
+        user-select: all;
+      }
+
+      .qc-instructions {
+        font-size: 10px;
+        color: #888;
+        margin-top: 8px;
+        line-height: 1.4;
+      }
+
+      .qc-polling-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
+        font-size: 11px;
+        color: #f59e0b;
+      }
+
+      .qc-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid #555;
+        border-top: 2px solid #f59e0b;
+        border-radius: 50%;
+        animation: qc-spin 1s linear infinite;
+      }
+
+      @keyframes qc-spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
 
       .search-input {
@@ -491,17 +668,15 @@
         <div class="section-title">Jellyfin Server</div>
         <div class="server-controls">
           <div id="serverStatus" class="server-status">Not connected</div>
+          <!-- Saved Server List -->
+          <div id="savedServerList" class="saved-server-list" style="display: none"></div>
           <div style="display: flex; gap: 8px; margin-top: 8px">
-            <button id="connectBtn" class="button primary">Connect</button>
-            <button id="logoutBtn" class="button secondary" style="display: none">Logout</button>
-          </div>
-          <div style="margin-top: 8px">
-            <button
-              id="clearSessionBtn"
-              class="button danger small"
-              style="font-size: 10px; padding: 4px 8px"
-            >
-              Clear Saved Session
+            <button id="connectBtn" class="button primary">Add Server</button>
+            <button id="addServerBtn" class="button primary" style="display: none">
+              Add Server
+            </button>
+            <button id="logoutBtn" class="button secondary" style="display: none">
+              Disconnect
             </button>
           </div>
         </div>
@@ -510,7 +685,15 @@
       <!-- Login Section -->
       <div id="loginSection" class="login-section" style="display: none">
         <div class="section-title">Login to Jellyfin</div>
-        <div class="login-form">
+
+        <!-- Login Method Tabs -->
+        <div class="login-method-tabs">
+          <button class="login-method-tab active" data-method="password">Password</button>
+          <button class="login-method-tab" data-method="quickconnect">Quick Connect</button>
+        </div>
+
+        <!-- Password Login Form -->
+        <div id="passwordLoginForm" class="login-form">
           <div class="input-group">
             <label class="input-label" for="serverUrl">Server URL</label>
             <input
@@ -531,6 +714,39 @@
           <div id="loginError" class="error"></div>
           <button id="loginBtn" class="button">Login</button>
           <button id="cancelLoginBtn" class="button secondary">Cancel</button>
+        </div>
+
+        <!-- Quick Connect Form -->
+        <div id="quickConnectForm" class="login-form" style="display: none">
+          <div class="input-group">
+            <label class="input-label" for="qcServerUrl">Server URL</label>
+            <input
+              type="text"
+              id="qcServerUrl"
+              class="text-input"
+              placeholder="http://your-server:8096"
+            />
+          </div>
+
+          <!-- Quick Connect Code Display -->
+          <div id="qcCodeSection" style="display: none">
+            <div class="qc-code-container">
+              <div class="qc-code-label">Enter this code in your Jellyfin dashboard:</div>
+              <div id="qcCode" class="qc-code"></div>
+              <div class="qc-instructions">
+                Go to your Jellyfin server &rarr; User Settings &rarr; Quick Connect and enter the
+                code above.
+              </div>
+            </div>
+            <div id="qcPollingStatus" class="qc-polling-status">
+              <span class="qc-spinner"></span>
+              <span>Waiting for approval...</span>
+            </div>
+          </div>
+
+          <div id="qcError" class="error"></div>
+          <button id="qcStartBtn" class="button">Start Quick Connect</button>
+          <button id="qcCancelBtn" class="button secondary">Cancel</button>
         </div>
       </div>
 

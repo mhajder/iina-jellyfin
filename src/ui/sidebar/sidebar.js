@@ -27,6 +27,16 @@ class JellyfinSidebar {
     this.searchTimeout = null;
     this.pendingSessionData = null;
 
+    // Multi-server state
+    this.servers = []; // Array of stored server objects
+    this.activeServerId = null;
+    this.initialAutoConnectDone = false;
+
+    // Quick Connect state
+    this.qcSecret = null;
+    this.qcPollingInterval = null;
+    this.qcServerUrl = null;
+
     this.init();
   }
 
@@ -95,8 +105,12 @@ class JellyfinSidebar {
       this.showLoginForm();
     });
 
+    document.getElementById('addServerBtn').addEventListener('click', () => {
+      this.showLoginForm();
+    });
+
     document.getElementById('logoutBtn').addEventListener('click', () => {
-      this.logout();
+      this.disconnectFromServer();
     });
 
     // Login form
@@ -106,6 +120,23 @@ class JellyfinSidebar {
 
     document.getElementById('cancelLoginBtn').addEventListener('click', () => {
       this.hideLoginForm();
+    });
+
+    // Quick Connect
+    document.getElementById('qcStartBtn').addEventListener('click', () => {
+      this.startQuickConnect();
+    });
+
+    document.getElementById('qcCancelBtn').addEventListener('click', () => {
+      this.cancelQuickConnect();
+      this.hideLoginForm();
+    });
+
+    // Login method tabs
+    document.querySelectorAll('.login-method-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        this.switchLoginMethod(tab.dataset.method);
+      });
     });
 
     // Search
@@ -135,11 +166,6 @@ class JellyfinSidebar {
       if (e.key === 'Enter') {
         this.login();
       }
-    });
-
-    // Clear session button
-    document.getElementById('clearSessionBtn').addEventListener('click', () => {
-      this.clearStoredSession();
     });
   }
 
@@ -172,8 +198,8 @@ class JellyfinSidebar {
   }
 
   setupMessageHandlers() {
-    // Listen for session data from main plugin
     if (typeof iina !== 'undefined' && iina.onMessage) {
+      // Legacy session messages (backward compatible)
       iina.onMessage('session-available', (data) => {
         debugLog('Received session-available message: ' + JSON.stringify(data));
         this.handleSessionAvailable(data);
@@ -188,19 +214,231 @@ class JellyfinSidebar {
         debugLog('Received session-cleared message');
         this.handleSessionCleared();
       });
+
+      // Multi-server messages
+      iina.onMessage('servers-list', (data) => {
+        debugLog('Received servers-list: ' + JSON.stringify(data));
+        this.handleServersList(data);
+      });
+
+      iina.onMessage('servers-updated', (data) => {
+        debugLog('Received servers-updated: ' + JSON.stringify(data));
+        this.handleServersList(data);
+      });
+
+      iina.onMessage('server-switched', (data) => {
+        debugLog('Received server-switched: ' + JSON.stringify(data));
+        if (data && data.server) {
+          this.handleServersList(data);
+          this.connectToServer(data.server);
+        }
+      });
     } else {
       debugLog('iina.onMessage not available, session auto-login disabled');
     }
   }
 
   requestSessionData() {
-    debugLog('Requesting session data from main plugin');
+    debugLog('Requesting server data from main plugin');
     if (typeof iina !== 'undefined' && iina.postMessage) {
+      // Request multi-server list first
+      iina.postMessage('get-servers');
+      // Also request legacy session for backward compatibility
       iina.postMessage('get-session');
     } else {
       debugLog('iina.postMessage not available, cannot request session data');
     }
   }
+
+  // ===== Multi-Server Handling =====
+
+  handleServersList(data) {
+    if (!data) return;
+    this.servers = data.servers || [];
+    this.activeServerId = data.activeServerId || null;
+    this.renderServerList();
+
+    // Auto-connect only on initial load, not after explicit disconnect/remove
+    if (!this.initialAutoConnectDone && !this.currentServer) {
+      const validServers = this.servers.filter((s) => s.userId);
+      if (validServers.length > 0) {
+        const activeServer =
+          validServers.find((s) => s.id === this.activeServerId) || validServers[0];
+        this.connectToServer(activeServer);
+      }
+      this.initialAutoConnectDone = true;
+    }
+  }
+
+  renderServerList() {
+    const listEl = document.getElementById('savedServerList');
+
+    // Filter out legacy entries that have no userId (ghost entries)
+    const validServers = this.servers.filter((s) => s.userId);
+
+    if (validServers.length === 0) {
+      listEl.style.display = 'none';
+      return;
+    }
+
+    // Show server list
+    listEl.style.display = 'flex';
+
+    // Render saved server items with inline remove button
+    listEl.innerHTML = validServers
+      .map(
+        (s) => `
+      <div class="saved-server-item ${s.id === this.activeServerId ? 'active' : ''}" data-server-id="${s.id}">
+        <div class="saved-server-dot"></div>
+        <div class="saved-server-info">
+          <div class="saved-server-name">${this.escapeHtml(s.serverName || s.serverUrl)}</div>
+          <div class="saved-server-url">${this.escapeHtml(s.serverUrl)}</div>
+          ${s.username ? `<div class="saved-server-user">${this.escapeHtml(s.username)}</div>` : ''}
+        </div>
+        <button class="server-remove-btn" data-server-id="${s.id}" title="Remove">✕</button>
+      </div>
+    `
+      )
+      .join('');
+
+    // Click handler for server items (switch server)
+    listEl.querySelectorAll('.saved-server-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        // Don't switch if clicking the remove button
+        if (e.target.closest('.server-remove-btn')) return;
+        const serverId = item.dataset.serverId;
+        this.switchToServer(serverId);
+      });
+    });
+
+    // Click handler for remove buttons
+    listEl.querySelectorAll('.server-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const serverId = btn.dataset.serverId;
+        this.removeServerFromStorage(serverId);
+      });
+    });
+  }
+
+  switchToServer(serverId) {
+    const server = this.servers.find((s) => s.id === serverId);
+    if (!server) return;
+
+    debugLog(`Switching to server: ${server.serverName}`);
+    this.activeServerId = serverId;
+
+    // Notify plugin to persist the switch
+    if (typeof iina !== 'undefined' && iina.postMessage) {
+      iina.postMessage('switch-server', { serverId });
+    }
+
+    // Connect to the server
+    this.connectToServer(server);
+    this.renderServerList();
+  }
+
+  async connectToServer(serverData) {
+    try {
+      debugLog('Connecting to server: ' + serverData.serverUrl);
+      this.updateServerStatus('Connecting...', 'connecting');
+
+      // Test the stored token
+      const response = await this.getHttpClient().get(`${serverData.serverUrl}/System/Info`, {
+        headers: {
+          'X-Emby-Token': serverData.accessToken,
+        },
+      });
+
+      if (response.status === 200 && response.data) {
+        const userResponse = await this.getHttpClient().get(`${serverData.serverUrl}/Users/Me`, {
+          headers: {
+            'X-Emby-Token': serverData.accessToken,
+          },
+        });
+
+        if (userResponse.status === 200 && userResponse.data) {
+          this.currentServer = {
+            name: response.data.ServerName || serverData.serverName || serverData.serverUrl,
+            url: serverData.serverUrl,
+            userId: userResponse.data.Id,
+            accessToken: serverData.accessToken,
+            serverId: serverData.id,
+          };
+
+          this.currentUser = userResponse.data;
+
+          // Update server info in storage with user details
+          if (typeof iina !== 'undefined' && iina.postMessage) {
+            iina.postMessage('store-session', {
+              serverUrl: serverData.serverUrl,
+              accessToken: serverData.accessToken,
+              serverName: response.data.ServerName || serverData.serverName || '',
+              userId: userResponse.data.Id,
+              username: userResponse.data.Name,
+            });
+          }
+
+          debugLog('Connected as: ' + this.currentUser.Name);
+          this.hideLoginForm();
+          this.showMainContent();
+          this.showLogoutButton();
+          this.updateServerStatus(
+            `Connected to ${this.currentServer.name} as ${this.currentUser.Name}`,
+            'connected'
+          );
+          this.loadHomeTab();
+          return;
+        }
+      }
+
+      // Token invalid — prompt re-login
+      debugLog('Token invalid for server, prompting re-login');
+      this.updateServerStatus('Session expired - please login again', 'error');
+      this.showLoginFormWithServer(serverData.serverUrl);
+    } catch (error) {
+      debugLog('Connection failed: ' + error.message);
+      this.updateServerStatus('Connection failed - check server', 'error');
+    }
+  }
+
+  showLoginFormWithServer(serverUrl) {
+    this.showLoginForm();
+    if (serverUrl) {
+      document.getElementById('serverUrl').value = serverUrl;
+      document.getElementById('qcServerUrl').value = serverUrl;
+    }
+  }
+
+  removeServerFromStorage(serverId) {
+    debugLog(`Removing server: ${serverId}`);
+
+    // Notify plugin to remove
+    if (typeof iina !== 'undefined' && iina.postMessage) {
+      iina.postMessage('remove-server', { serverId });
+    }
+
+    // Update local state
+    this.servers = this.servers.filter((s) => s.id !== serverId);
+    if (this.activeServerId === serverId) {
+      this.activeServerId = this.servers.length > 0 ? this.servers[0].id : null;
+    }
+
+    // If removed the currently connected server, disconnect
+    if (this.currentServer && this.currentServer.serverId === serverId) {
+      this.disconnectFromServer();
+    }
+
+    this.renderServerList();
+  }
+
+  escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  // ===== Legacy Session Handlers (backward compatible) =====
 
   handleSessionAvailable(sessionData) {
     if (!sessionData || !sessionData.serverUrl || !sessionData.accessToken) {
@@ -208,8 +446,14 @@ class JellyfinSidebar {
       return;
     }
 
-    debugLog('Attempting auto-login with session data');
-    this.attemptAutoLogin(sessionData);
+    // If we already have servers loaded, don't duplicate auto-login
+    if (this.servers.length > 0) {
+      debugLog('Servers already loaded, skipping legacy session-available');
+      return;
+    }
+
+    debugLog('Attempting auto-login with legacy session data');
+    this.connectToServer(sessionData);
   }
 
   handleSessionData(sessionData) {
@@ -218,92 +462,50 @@ class JellyfinSidebar {
       return;
     }
 
+    // If we already have servers loaded, don't duplicate
+    if (this.servers.length > 0) return;
+
     debugLog('Retrieved stored session data, attempting auto-login');
-    this.attemptAutoLogin(sessionData);
+    this.connectToServer(sessionData);
   }
 
   handleSessionCleared() {
-    debugLog('Session cleared, logging out if currently logged in');
+    debugLog('Session cleared');
+    this.servers = [];
+    this.activeServerId = null;
+    this.renderServerList();
     if (this.currentServer) {
-      this.logout();
+      this.disconnectFromServer();
     }
   }
 
-  async attemptAutoLogin(sessionData) {
-    try {
-      debugLog('Attempting auto-login to: ' + sessionData.serverUrl);
-
-      // Update UI to show connecting
-      this.updateServerStatus('Auto-connecting...', 'connecting');
-
-      // Test the stored session by making a simple API call
-      const response = await this.getHttpClient().get(`${sessionData.serverUrl}/System/Info`, {
-        headers: {
-          'X-Emby-Token': sessionData.accessToken,
-        },
-      });
-
-      if (response.status === 200 && response.data) {
-        // Session is valid, get user info
-        const userResponse = await this.getHttpClient().get(`${sessionData.serverUrl}/Users/Me`, {
-          headers: {
-            'X-Emby-Token': sessionData.accessToken,
-          },
-        });
-
-        if (userResponse.status === 200 && userResponse.data) {
-          // Auto-login successful
-          this.currentServer = {
-            name: response.data.ServerName || sessionData.serverUrl,
-            url: sessionData.serverUrl,
-            userId: userResponse.data.Id,
-            accessToken: sessionData.accessToken,
-          };
-
-          this.currentUser = userResponse.data;
-
-          debugLog('Auto-login successful for user: ' + this.currentUser.Name);
-
-          this.hideLoginForm();
-          this.showMainContent();
-          this.showLogoutButton();
-          this.updateServerStatus(`Auto-connected as ${this.currentUser.Name}`, 'connected');
-          this.loadHomeTab();
-
-          return;
-        }
-      }
-    } catch (error) {
-      debugLog('Auto-login failed: ' + error.message);
-    }
-
-    // Auto-login failed, clear session and show login form
-    debugLog('Auto-login failed, clearing stored session');
-    this.clearStoredSession();
-    this.updateServerStatus('Auto-login failed - please login manually', 'error');
-  }
-
-  clearStoredSession() {
-    debugLog('Requesting session clear from main plugin');
-    if (typeof iina !== 'undefined' && iina.postMessage) {
-      iina.postMessage('clear-session');
-    }
-
-    // Also clear local state
-    this.logout();
-  }
-
-  storeSessionData(serverUrl, accessToken) {
+  storeSessionData(serverUrl, accessToken, serverName, userId, username) {
     debugLog('Requesting session storage from main plugin');
     if (typeof iina !== 'undefined' && iina.postMessage) {
       iina.postMessage('store-session', {
         serverUrl: serverUrl,
         accessToken: accessToken,
+        serverName: serverName || '',
+        userId: userId || '',
+        username: username || '',
       });
     }
   }
 
-  // Simple logout functionality
+  // Disconnect from current server without removing it
+  disconnectFromServer() {
+    debugLog('Disconnecting from current server');
+    this.currentUser = null;
+    this.currentServer = null;
+    this.activeServerId = null;
+    this.updateServerStatus('Not connected', '');
+    this.hideMainContent();
+    this.showConnectButton();
+    this.renderServerList();
+    this.clearLoginForm();
+  }
+
+  // Simple logout functionality - clears everything
   logout() {
     debugLog('Logging out user');
     this.currentUser = null;
@@ -322,22 +524,27 @@ class JellyfinSidebar {
 
   showConnectButton() {
     document.getElementById('connectBtn').style.display = 'block';
+    document.getElementById('addServerBtn').style.display = 'none';
     document.getElementById('logoutBtn').style.display = 'none';
   }
 
   showLogoutButton() {
     document.getElementById('connectBtn').style.display = 'none';
+    document.getElementById('addServerBtn').style.display = 'block';
     document.getElementById('logoutBtn').style.display = 'block';
   }
 
   // Authentication
   showLoginForm() {
     document.getElementById('loginSection').style.display = 'block';
-    document.getElementById('serverUrl').focus();
+    // Reset to password tab
+    this.switchLoginMethod('password');
+    this.scrollToTop();
   }
 
   hideLoginForm() {
     document.getElementById('loginSection').style.display = 'none';
+    this.cancelQuickConnect();
     this.clearLoginForm();
   }
 
@@ -346,6 +553,247 @@ class JellyfinSidebar {
     document.getElementById('username').value = '';
     document.getElementById('password').value = '';
     document.getElementById('loginError').textContent = '';
+    document.getElementById('qcServerUrl').value = '';
+    document.getElementById('qcError').textContent = '';
+  }
+
+  switchLoginMethod(method) {
+    // Update tab active state
+    document.querySelectorAll('.login-method-tab').forEach((tab) => {
+      tab.classList.toggle('active', tab.dataset.method === method);
+    });
+
+    // Show/hide forms
+    const passwordForm = document.getElementById('passwordLoginForm');
+    const qcForm = document.getElementById('quickConnectForm');
+
+    if (method === 'quickconnect') {
+      passwordForm.style.display = 'none';
+      qcForm.style.display = 'flex';
+      // Copy server URL from password form if available
+      const serverUrl = document.getElementById('serverUrl').value.trim();
+      if (serverUrl && !document.getElementById('qcServerUrl').value.trim()) {
+        document.getElementById('qcServerUrl').value = serverUrl;
+      }
+    } else {
+      passwordForm.style.display = 'flex';
+      qcForm.style.display = 'none';
+      // Copy server URL from QC form if available
+      const qcUrl = document.getElementById('qcServerUrl').value.trim();
+      if (qcUrl && !document.getElementById('serverUrl').value.trim()) {
+        document.getElementById('serverUrl').value = qcUrl;
+      }
+      this.cancelQuickConnect();
+    }
+  }
+
+  // ===== Quick Connect =====
+
+  async startQuickConnect() {
+    const serverUrl = document.getElementById('qcServerUrl').value.trim();
+    const errorEl = document.getElementById('qcError');
+    errorEl.textContent = '';
+
+    if (!serverUrl) {
+      errorEl.textContent = 'Please enter a server URL';
+      return;
+    }
+
+    let normalizedUrl;
+    try {
+      normalizedUrl = this.normalizeServerUrl(serverUrl);
+    } catch (e) {
+      errorEl.textContent = e.message;
+      return;
+    }
+
+    const startBtn = document.getElementById('qcStartBtn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Checking...';
+
+    try {
+      const httpClient = this.getHttpClient();
+
+      // Check if Quick Connect is enabled on the server
+      const enabledResponse = await httpClient.get(`${normalizedUrl}/QuickConnect/Enabled`);
+      debugLog('Quick Connect enabled response: ' + JSON.stringify(enabledResponse.data));
+
+      if (enabledResponse.data !== true && enabledResponse.data !== 'true') {
+        errorEl.textContent =
+          'Quick Connect is not enabled on this server. Ask your server administrator to enable it, or use password login.';
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Quick Connect';
+        return;
+      }
+
+      // Initiate Quick Connect
+      const initiateResponse = await httpClient.post(`${normalizedUrl}/QuickConnect/Initiate`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"`,
+        },
+      });
+
+      debugLog('Quick Connect initiate response: ' + JSON.stringify(initiateResponse.data));
+
+      if (!initiateResponse.data || !initiateResponse.data.Secret || !initiateResponse.data.Code) {
+        errorEl.textContent = 'Failed to initiate Quick Connect. Please try again.';
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Quick Connect';
+        return;
+      }
+
+      // Store secret and show code
+      this.qcSecret = initiateResponse.data.Secret;
+      this.qcServerUrl = normalizedUrl;
+
+      // Display the code
+      document.getElementById('qcCode').textContent = initiateResponse.data.Code;
+      document.getElementById('qcCodeSection').style.display = 'block';
+      startBtn.style.display = 'none';
+
+      // Start polling for approval
+      this.pollQuickConnect();
+    } catch (error) {
+      debugLog('Quick Connect error: ' + error.message);
+      errorEl.textContent = 'Failed to start Quick Connect. Check your server URL.';
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Quick Connect';
+    }
+  }
+
+  pollQuickConnect() {
+    if (this.qcPollingInterval) {
+      clearInterval(this.qcPollingInterval);
+    }
+
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes at 5-second intervals
+
+    this.qcPollingInterval = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        this.cancelQuickConnect();
+        document.getElementById('qcError').textContent =
+          'Quick Connect timed out. Please try again.';
+        return;
+      }
+
+      try {
+        const httpClient = this.getHttpClient();
+        const response = await httpClient.get(
+          `${this.qcServerUrl}/QuickConnect/Connect?secret=${this.qcSecret}`
+        );
+
+        debugLog('Quick Connect poll response: ' + JSON.stringify(response.data));
+
+        if (response.data && response.data.Authenticated === true) {
+          debugLog('Quick Connect approved! Authenticating...');
+          clearInterval(this.qcPollingInterval);
+          this.qcPollingInterval = null;
+
+          // Update polling status
+          const statusEl = document.getElementById('qcPollingStatus');
+          statusEl.innerHTML = '<span style="color: #4ade80;">Approved! Logging in...</span>';
+
+          // Exchange the secret for an access token
+          await this.authenticateWithQuickConnect();
+        }
+      } catch (error) {
+        debugLog('Quick Connect poll error: ' + error.message);
+        // Don't cancel on transient errors, just keep polling
+      }
+    }, 5000);
+  }
+
+  async authenticateWithQuickConnect() {
+    try {
+      const httpClient = this.getHttpClient();
+      const response = await httpClient.post(
+        `${this.qcServerUrl}/Users/AuthenticateWithQuickConnect`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"`,
+          },
+          data: JSON.stringify({ Secret: this.qcSecret }),
+        }
+      );
+
+      debugLog('Quick Connect auth response: ' + JSON.stringify(response.data).substring(0, 500));
+
+      if (response.data && response.data.AccessToken) {
+        const accessToken = response.data.AccessToken;
+        const user = response.data.User;
+
+        // Get server name
+        let serverName = this.qcServerUrl;
+        try {
+          const infoResponse = await httpClient.get(`${this.qcServerUrl}/System/Info/Public`);
+          if (infoResponse.data && infoResponse.data.ServerName) {
+            serverName = infoResponse.data.ServerName;
+          }
+        } catch (infoError) {
+          debugLog('Could not get server info: ' + infoError);
+        }
+
+        // Set up the connection
+        this.currentServer = {
+          name: serverName,
+          url: this.qcServerUrl,
+          userId: user.Id,
+          accessToken: accessToken,
+        };
+        this.currentUser = user;
+
+        // Store session
+        this.storeSessionData(this.qcServerUrl, accessToken, serverName, user.Id, user.Name);
+
+        // Clean up Quick Connect state
+        const qcServerUrl = this.qcServerUrl;
+        this.qcSecret = null;
+        this.qcServerUrl = null;
+
+        // Update UI
+        this.hideLoginForm();
+        this.showMainContent();
+        this.showLogoutButton();
+        this.updateServerStatus(`Connected as ${user.Name}`, 'connected');
+        this.loadHomeTab();
+
+        debugLog(`Quick Connect login successful as ${user.Name} on ${qcServerUrl}`);
+      } else {
+        document.getElementById('qcError').textContent =
+          'Quick Connect authentication failed. Please try again.';
+        this.resetQuickConnectUI();
+      }
+    } catch (error) {
+      debugLog('Quick Connect auth error: ' + error.message);
+      document.getElementById('qcError').textContent =
+        'Authentication failed: ' + (error.message || 'Unknown error');
+      this.resetQuickConnectUI();
+    }
+  }
+
+  cancelQuickConnect() {
+    if (this.qcPollingInterval) {
+      clearInterval(this.qcPollingInterval);
+      this.qcPollingInterval = null;
+    }
+    this.qcSecret = null;
+    this.qcServerUrl = null;
+    this.resetQuickConnectUI();
+  }
+
+  resetQuickConnectUI() {
+    document.getElementById('qcCodeSection').style.display = 'none';
+    document.getElementById('qcCode').textContent = '';
+    const startBtn = document.getElementById('qcStartBtn');
+    startBtn.style.display = 'block';
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start Quick Connect';
+    const statusEl = document.getElementById('qcPollingStatus');
+    statusEl.innerHTML = '<span class="qc-spinner"></span><span>Waiting for approval...</span>';
   }
 
   async login() {
@@ -378,7 +826,7 @@ class JellyfinSidebar {
       if (authResult.success) {
         debugLog('Authentication successful');
 
-        // Create simple server object
+        // Create server object
         this.currentServer = {
           name: authResult.serverName || normalizedUrl,
           url: normalizedUrl,
@@ -388,8 +836,14 @@ class JellyfinSidebar {
 
         this.currentUser = authResult.user;
 
-        // Store session data for future auto-login
-        this.storeSessionData(normalizedUrl, authResult.accessToken);
+        // Store session data with full server info for multi-server management
+        this.storeSessionData(
+          normalizedUrl,
+          authResult.accessToken,
+          authResult.serverName || '',
+          authResult.user.Id,
+          authResult.user.Name
+        );
 
         this.hideLoginForm();
         this.showMainContent();
@@ -484,7 +938,7 @@ class JellyfinSidebar {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'X-Emby-Authorization': `Emby UserId="${username}", Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-${Date.now()}", Version="0.0.1", Token=""`,
+          Authorization: `MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"`,
         },
         data: JSON.stringify(authData),
       });
@@ -578,11 +1032,16 @@ class JellyfinSidebar {
   // UI Management
   showMainContent() {
     document.getElementById('mainContent').style.display = 'block';
+    this.scrollToTop();
   }
 
   hideMainContent() {
     document.getElementById('mainContent').style.display = 'none';
     this.hideEpisodeSelection();
+  }
+
+  scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   // Media Browsing
@@ -641,6 +1100,7 @@ class JellyfinSidebar {
 
     // Load all three sections in parallel
     await Promise.all([this.loadContinueWatching(), this.loadNextUp(), this.loadRecentItems()]);
+    this.scrollToTop();
   }
 
   /**
