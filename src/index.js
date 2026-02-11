@@ -814,6 +814,7 @@ async function getSeriesInfoFromEpisode(serverBase, episodeId, apiKey) {
 
     const seriesId = metadata.SeriesId;
     const seasonId = metadata.SeasonId;
+    const seriesName = metadata.SeriesName || '';
     const seasonNumber = Number(metadata.ParentIndexNumber) || 1;
     const episodeIndexNumber = Number(metadata.IndexNumber) || 0;
 
@@ -823,12 +824,13 @@ async function getSeriesInfoFromEpisode(serverBase, episodeId, apiKey) {
     }
 
     debugLog(
-      `Series info: SeriesId=${seriesId}, SeasonId=${seasonId}, SeasonNumber=${seasonNumber}, EpisodeNumber=${episodeIndexNumber}`
+      `Series info: SeriesName=${seriesName}, SeriesId=${seriesId}, SeasonId=${seasonId}, SeasonNumber=${seasonNumber}, EpisodeNumber=${episodeIndexNumber}`
     );
 
     return {
       seriesId,
       seasonId,
+      seriesName,
       seasonNumber,
       currentEpisodeNumber: episodeIndexNumber,
     };
@@ -848,6 +850,7 @@ async function addEpisodesToPlaylist(
   seasonId,
   seasonNumber,
   currentEpisodeNumber,
+  seriesName,
   apiKey
 ) {
   try {
@@ -914,13 +917,31 @@ async function addEpisodesToPlaylist(
 
         debugLog(`Adding episode ${episode.indexNumber}: ${episode.name} to playlist`);
 
-        // Add to playlist - IINA will display whatever it can extract from the URL
-        // Note: IINA's playlist UI has limitations and may only show URLs regardless of title parameter
+        // Build a descriptive title for the playlist entry (include series name)
+        const seCode = `S${String(seasonNumber).padStart(2, '0')}E${String(episode.indexNumber).padStart(2, '0')}`;
+        const episodeTitle = seriesName
+          ? `${seriesName} ${seCode} - ${episode.name}`
+          : `${seCode} - ${episode.name}`;
+
+        // Use mpv loadfile with force-media-title to set title for each playlist entry
+        // playlist.add() only accepts a URL and doesn't support setting titles
         try {
-          playlist.add(episode.playUrl);
-          debugLog(`Added episode: ${episode.playUrl}`);
+          mpv.command('loadfile', [
+            episode.playUrl,
+            'append',
+            '-1',
+            `force-media-title=${episodeTitle}`,
+          ]);
+          debugLog(`Added episode to playlist: ${episodeTitle}`);
         } catch (error) {
-          debugLog(`Failed to add episode: ${error.message}`);
+          debugLog(`Failed to add episode via mpv loadfile: ${error.message}`);
+          // Fallback to playlist.add()
+          try {
+            playlist.add(episode.playUrl);
+            debugLog(`Added episode via playlist.add fallback: ${episode.playUrl}`);
+          } catch (fallbackError) {
+            debugLog(`Fallback playlist.add also failed: ${fallbackError.message}`);
+          }
         }
 
         // Track this episode as added
@@ -1364,13 +1385,14 @@ function setupAutoplayForEpisode(serverBase, episodeId, apiKey) {
       // Store episode info for later reference
       storeCurrentEpisodeInfo(episodeId, seriesInfo);
 
-      // Add remaining episodes to playlist (pass season number for proper formatting)
+      // Add remaining episodes to playlist (pass season number and name for proper formatting)
       const addedCount = await addEpisodesToPlaylist(
         serverBase,
         seriesInfo.seriesId,
         seriesInfo.seasonId,
         seriesInfo.seasonNumber,
         seriesInfo.currentEpisodeNumber,
+        seriesInfo.seriesName,
         apiKey
       );
 
@@ -1659,7 +1681,30 @@ function handlePlayMedia(message) {
     } else {
       debugLog('Opening media in current window: ' + streamUrl);
       core.osd(`Opening: ${title}`);
-      core.open(streamUrl);
+
+      // Clear any previous playlist entries to prevent stale titles
+      try {
+        if (playlist && typeof playlist.clear === 'function') {
+          playlist.clear();
+          addedEpisodeIds.clear();
+        }
+      } catch (clearError) {
+        debugLog(`Could not clear playlist before opening: ${clearError.message}`);
+      }
+
+      // Use mpv loadfile with force-media-title to set the title atomically
+      // This prevents the stale title bug where the old title persists until
+      // the async setVideoTitleFromMetadata call completes
+      if (title) {
+        try {
+          mpv.command('loadfile', [streamUrl, 'replace', '-1', `force-media-title=${title}`]);
+        } catch (error) {
+          debugLog(`mpv loadfile with title failed: ${error.message}, falling back to core.open`);
+          core.open(streamUrl);
+        }
+      } else {
+        core.open(streamUrl);
+      }
     }
 
     debugLog('Successfully initiated media opening: ' + streamUrl);
