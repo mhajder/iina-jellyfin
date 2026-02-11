@@ -173,7 +173,7 @@
       }
 
       .media-list {
-        max-height: 400px;
+        max-height: 350px;
         overflow-y: auto;
       }
 
@@ -423,10 +423,12 @@
         background: none;
         border: none;
         color: #888;
-        padding: 8px 12px;
+        padding: 8px 8px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 11px;
         border-bottom: 2px solid transparent;
+        flex: 1;
+        text-align: center;
       }
 
       .tab-button.active {
@@ -535,16 +537,50 @@
       <!-- Main Content Tabs -->
       <div id="mainContent" style="display: none">
         <div class="tab-nav">
-          <button class="tab-button active" data-tab="recent">Recent</button>
+          <button class="tab-button active" data-tab="home">Home</button>
+          <button class="tab-button" data-tab="movies">Movies</button>
+          <button class="tab-button" data-tab="series">Series</button>
           <button class="tab-button" data-tab="search">Search</button>
         </div>
 
-        <!-- Recent Items Tab -->
-        <div id="recentTab" class="tab-content active">
+        <!-- Home Tab -->
+        <div id="homeTab" class="tab-content active">
           <div class="media-section">
+            <div class="section-title">Continue Watching</div>
+            <div id="continueWatchingList" class="media-list">
+              <div class="loading">Loading...</div>
+            </div>
+          </div>
+          <div class="media-section" style="margin-top: 12px">
+            <div class="section-title">Up Next</div>
+            <div id="nextUpList" class="media-list">
+              <div class="loading">Loading...</div>
+            </div>
+          </div>
+          <div class="media-section" style="margin-top: 12px">
             <div class="section-title">Recently Added</div>
             <div id="recentList" class="media-list">
-              <div class="loading">Loading recent items...</div>
+              <div class="loading">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Movies Tab -->
+        <div id="moviesTab" class="tab-content">
+          <div class="media-section">
+            <div class="section-title">Movies</div>
+            <div id="moviesList" class="media-list">
+              <div class="loading">Loading movies...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Series Tab -->
+        <div id="seriesTab" class="tab-content">
+          <div class="media-section">
+            <div class="section-title">Series</div>
+            <div id="seriesList" class="media-list">
+              <div class="loading">Loading series...</div>
             </div>
           </div>
         </div>
