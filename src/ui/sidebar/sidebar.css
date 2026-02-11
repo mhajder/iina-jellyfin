@@ -50,7 +50,6 @@
 }
 
 .media-item:hover {
-  transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 102, 204, 0.2);
 }
 
@@ -85,7 +84,7 @@
 }
 
 .episode-item:hover {
-  transform: translateX(4px);
+  box-shadow: 0 1px 4px rgba(0, 102, 204, 0.15);
 }
 
 /* Tab button improvements */
@@ -100,10 +99,10 @@
 /* Media type badges */
 .media-meta {
   background: #444;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 3px;
   display: inline-block;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 /* Media action buttons */

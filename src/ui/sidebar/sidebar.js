@@ -598,7 +598,10 @@ class JellyfinSidebar {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         limit: 20,
-        fields: 'BasicSyncInfo,CanDelete,PrimaryImageAspectRatio,ProductionYear,Status,EndDate',
+        fields:
+          'BasicSyncInfo,CanDelete,PrimaryImageAspectRatio,ProductionYear,Status,EndDate,RunTimeTicks,ImageTags,BackdropImageTags,SeriesId',
+        imageTypeLimit: 1,
+        enableImageTypes: 'Primary,Backdrop,Thumb',
         includeItemTypes: 'Movie,Series,Episode',
       });
 
@@ -702,6 +705,55 @@ class JellyfinSidebar {
     });
   }
 
+  /**
+   * Get the thumbnail image URL for a media item
+   * @param {Object} item - Jellyfin media item
+   * @param {number} maxWidth - Max image width
+   * @returns {string|null} Image URL or null
+   */
+  getThumbnailUrl(item, maxWidth = 160) {
+    if (!this.currentServer) return null;
+    const base = this.currentServer.url;
+    const token = this.currentServer.accessToken;
+
+    // For episodes, try the episode Primary image first
+    if (item.Type === 'Episode') {
+      if (item.ImageTags && item.ImageTags.Primary) {
+        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+      }
+      // Fallback to series thumb
+      if (item.SeriesId) {
+        return `${base}/Items/${item.SeriesId}/Images/Thumb?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+      }
+    }
+
+    // For movies/series, try Thumb, then Primary, then Backdrop
+    if (item.ImageTags && item.ImageTags.Thumb) {
+      return `${base}/Items/${item.Id}/Images/Thumb?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+    }
+    if (item.ImageTags && item.ImageTags.Primary) {
+      return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+    }
+    if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
+      return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&api_key=${token}`;
+    }
+    return null;
+  }
+
+  /**
+   * Format runtime ticks to human-readable duration
+   * @param {number} ticks - Jellyfin RunTimeTicks
+   * @returns {string} Formatted duration like "1h 23m" or "45m"
+   */
+  formatRuntime(ticks) {
+    if (!ticks) return '';
+    const totalMinutes = Math.floor(ticks / 600000000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  }
+
   createMediaItemElement(item) {
     const itemEl = document.createElement('div');
     itemEl.className = 'media-item';
@@ -711,6 +763,8 @@ class JellyfinSidebar {
     const title = item.Name || 'Unknown Title';
     const year = item.ProductionYear ? ` (${item.ProductionYear})` : '';
     const type = item.Type;
+    const duration = this.formatRuntime(item.RunTimeTicks);
+    const thumbUrl = this.getThumbnailUrl(item);
 
     let subtitle = '';
     if (item.Type === 'Episode' && item.SeriesName) {
@@ -723,18 +777,29 @@ class JellyfinSidebar {
       subtitle = 'Movie';
     }
 
+    const thumbHtml = thumbUrl
+      ? `<div class="thumb-wrapper">
+           <img class="list-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+           <div class="play-overlay">&#9654;</div>
+         </div>`
+      : `<div class="thumb-wrapper thumb-fallback"><div class="play-overlay">&#9654;</div></div>`;
+
     itemEl.innerHTML = `
-            <div class="media-title">${title}${year}</div>
-            ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
-            <div class="media-meta">${type}</div>
-            <div class="media-actions" style="margin-top: 6px; display: flex; gap: 4px;">
-                <button class="button media-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="select">
-                    ${item.Type === 'Series' ? 'Browse Episodes' : 'Play'}
-                </button>
-                <button class="button secondary media-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="open-jellyfin">
-                    Open in Jellyfin
-                </button>
+            ${thumbHtml}
+            <div class="list-body">
+                <div class="media-title">${title}${year}</div>
+                ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
+                <div class="media-meta">${type}</div>
+                <div class="media-actions">
+                    <button class="button media-action-btn" data-action="select">
+                        ${item.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                    </button>
+                    <button class="button secondary media-action-btn" data-action="open-jellyfin">
+                        Jellyfin
+                    </button>
+                </div>
             </div>
+            ${duration ? `<div class="list-duration">${duration}</div>` : ''}
         `;
 
     // Add event listeners for the action buttons
@@ -772,18 +837,44 @@ class JellyfinSidebar {
     const title = hint.Name || 'Unknown Title';
     const year = hint.ProductionYear ? ` (${hint.ProductionYear})` : '';
     const type = hint.Type;
+    const duration = this.formatRuntime(hint.RunTimeTicks);
+
+    // Search hints may have a thumb via ThumbImageTag / ThumbImageItemId
+    let thumbUrl = null;
+    if (this.currentServer) {
+      const base = this.currentServer.url;
+      const token = this.currentServer.accessToken;
+      if (hint.ThumbImageTag && hint.ThumbImageItemId) {
+        thumbUrl = `${base}/Items/${hint.ThumbImageItemId}/Images/Thumb?maxWidth=160&quality=90&api_key=${token}`;
+      } else if (hint.PrimaryImageTag) {
+        thumbUrl = `${base}/Items/${hint.ItemId}/Images/Primary?maxWidth=160&quality=90&api_key=${token}`;
+      } else if (hint.BackdropImageTag && hint.BackdropImageItemId) {
+        thumbUrl = `${base}/Items/${hint.BackdropImageItemId}/Images/Backdrop?maxWidth=320&quality=90&api_key=${token}`;
+      }
+    }
+
+    const thumbHtml = thumbUrl
+      ? `<div class="thumb-wrapper">
+           <img class="list-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+           <div class="play-overlay">&#9654;</div>
+         </div>`
+      : `<div class="thumb-wrapper thumb-fallback"><div class="play-overlay">&#9654;</div></div>`;
 
     itemEl.innerHTML = `
-            <div class="media-title">${title}${year}</div>
-            <div class="media-meta">${type}</div>
-            <div class="media-actions" style="margin-top: 6px; display: flex; gap: 4px;">
-                <button class="button search-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="select">
-                    ${hint.Type === 'Series' ? 'Browse Episodes' : 'Play'}
-                </button>
-                <button class="button secondary search-action-btn" style="font-size: 10px; padding: 3px 6px;" data-action="open-jellyfin">
-                    Open in Jellyfin
-                </button>
+            ${thumbHtml}
+            <div class="list-body">
+                <div class="media-title">${title}${year}</div>
+                <div class="media-meta">${type}</div>
+                <div class="media-actions">
+                    <button class="button search-action-btn" data-action="select">
+                        ${hint.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                    </button>
+                    <button class="button secondary search-action-btn" data-action="open-jellyfin">
+                        Open in Jellyfin
+                    </button>
+                </div>
             </div>
+            ${duration ? `<div class="list-duration">${duration}</div>` : ''}
         `;
 
     // Add event listeners for the action buttons
@@ -914,7 +1005,8 @@ class JellyfinSidebar {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         seasonId: seasonId,
-        fields: 'MediaSources,Path,LocationType,IsFolder,CanDownload,UserData,BasicSyncInfo',
+        fields:
+          'MediaSources,Path,LocationType,IsFolder,CanDownload,UserData,BasicSyncInfo,RunTimeTicks,ImageTags',
       });
 
       const response = await this.getHttpClient().get(
@@ -938,13 +1030,38 @@ class JellyfinSidebar {
 
           const episodeNum = episode.IndexNumber || '?';
           const title = episode.Name || `Episode ${episodeNum}`;
+          const duration = this.formatRuntime(episode.RunTimeTicks);
+
+          // Build episode thumbnail
+          let episodeThumbUrl = null;
+          if (this.currentServer) {
+            const base = this.currentServer.url;
+            const token = this.currentServer.accessToken;
+            if (episode.ImageTags && episode.ImageTags.Primary) {
+              episodeThumbUrl = `${base}/Items/${episode.Id}/Images/Primary?maxWidth=120&quality=90&api_key=${token}`;
+            } else if (this.selectedItem && this.selectedItem.Id) {
+              episodeThumbUrl = `${base}/Items/${this.selectedItem.Id}/Images/Thumb?maxWidth=120&quality=90&api_key=${token}`;
+            }
+          }
+
+          const episodeThumbHtml = episodeThumbUrl
+            ? `<div class="ep-thumb-wrapper">
+                 <img class="ep-thumb" src="${episodeThumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+               </div>`
+            : `<div class="ep-thumb-wrapper thumb-fallback"></div>`;
 
           // Add availability indicator
           const availabilityIcon = isAvailable
             ? ''
             : ' <span class="unavailable-icon" title="Episode not available on server">⚠️</span>';
 
-          episodeEl.innerHTML = `${episodeNum}. ${title}${availabilityIcon}`;
+          episodeEl.innerHTML = `
+            ${episodeThumbHtml}
+            <div class="ep-body">
+              <span class="ep-title">${episodeNum}. ${title}${availabilityIcon}</span>
+            </div>
+            ${duration ? `<span class="ep-duration">${duration}</span>` : ''}
+          `;
 
           if (isAvailable) {
             episodeEl.addEventListener('click', () => {
