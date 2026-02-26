@@ -208,6 +208,18 @@ class JellyfinSidebar {
       this.debounceSearch(e.target.value);
     });
 
+    // Search type filter chips
+    document.querySelectorAll('.search-type-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        // Re-run search with current input value if there's a term
+        const term = document.getElementById('searchInput').value;
+        if (term.trim()) {
+          this.debounceSearch(term);
+        }
+      });
+    });
+
     // Filters
     document.getElementById('moviesFilterBtn').addEventListener('click', () => {
       const panel = document.getElementById('moviesFilterPanel');
