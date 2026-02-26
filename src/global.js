@@ -3,17 +3,11 @@
  * Handles creating new player instances for separate windows
  */
 
+const { createDebugLogger } = require('./lib/debug-log.js');
+
 const { global, console, preferences } = iina;
 
-/**
- * Debug logging helper function
- * Only logs if debug logging is enabled in preferences
- */
-function debugLog(message) {
-  if (preferences?.get?.('debug_logging')) {
-    console.log(`DEBUG: ${message}`);
-  }
-}
+const debugLog = createDebugLogger(preferences, console);
 
 debugLog('Jellyfin Plugin Global Entry loaded');
 
