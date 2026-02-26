@@ -536,7 +536,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     selectMediaItem(item) {
-      debugLog('selectMediaItem called with: ' + JSON.stringify(item));
+      debugLog('selectMediaItem called', {
+        id: item?.Id,
+        type: item?.Type,
+        name: item?.Name,
+      });
       this.selectedItem = item;
 
       document.querySelectorAll('.media-item').forEach((el) => el.classList.remove('selected'));
@@ -763,7 +767,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           title: `${item.Name} - Jellyfin`,
         };
 
-        debugLog(`Sending message: ${JSON.stringify(messageData)}`);
+        debugLog('Sending message', {
+          url: messageData.url,
+          title: messageData.title,
+        });
         iina.postMessage('open-external-url', messageData);
 
         debugLog('Successfully sent open-external-url message to IINA');

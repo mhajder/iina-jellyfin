@@ -7,9 +7,73 @@
  * Debug logging helper function
  * Only logs if debug logging is enabled in preferences
  */
-function debugLog(message) {
+const MAX_DEBUG_LOG_LENGTH = 600;
+
+function truncateDebugText(value, maxLength = MAX_DEBUG_LOG_LENGTH) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}…[truncated ${value.length - maxLength} chars]`;
+}
+
+function serializeDebugArg(arg) {
+  if (arg === null || arg === undefined) {
+    return String(arg);
+  }
+
+  if (typeof arg === 'string') {
+    return truncateDebugText(arg);
+  }
+
+  if (typeof arg === 'number' || typeof arg === 'boolean' || typeof arg === 'bigint') {
+    return String(arg);
+  }
+
+  if (arg instanceof Error) {
+    return `${arg.name}: ${arg.message}`;
+  }
+
+  if (Array.isArray(arg)) {
+    return `[Array(${arg.length})]`;
+  }
+
+  if (typeof arg === 'object') {
+    const keys = Object.keys(arg);
+    const preview = keys.slice(0, 8).reduce((acc, key) => {
+      const value = arg[key];
+      if (
+        value === null ||
+        value === undefined ||
+        typeof value === 'number' ||
+        typeof value === 'boolean'
+      ) {
+        acc[key] = value;
+      } else if (typeof value === 'string') {
+        acc[key] = truncateDebugText(value, 120);
+      } else if (Array.isArray(value)) {
+        acc[key] = `[Array(${value.length})]`;
+      } else if (typeof value === 'object') {
+        acc[key] = '[Object]';
+      } else {
+        acc[key] = String(value);
+      }
+      return acc;
+    }, {});
+
+    if (keys.length > 8) {
+      preview.__extraKeys = keys.length - 8;
+    }
+
+    return truncateDebugText(JSON.stringify(preview));
+  }
+
+  return truncateDebugText(String(arg));
+}
+
+function debugLog(...parts) {
   if (iina?.preferences?.get?.('debug_logging')) {
-    console.log(`DEBUG: ${message}`);
+    console.log(`DEBUG: ${parts.map(serializeDebugArg).join(' | ')}`);
   }
 }
 

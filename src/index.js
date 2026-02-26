@@ -313,7 +313,11 @@ function openInNewInstance(streamUrl, title) {
     // Listen for response from global entry
     const messageHandler = (name, data) => {
       if (name === 'player-created') {
-        debugLog('New player instance created: ' + JSON.stringify(data));
+        debugLog('New player instance created', {
+          playerId: data?.playerId,
+          title: data?.title,
+          url: data?.url,
+        });
         core.osd(`Opened in new window: ${data.title}`);
       } else if (name === 'player-creation-failed') {
         debugLog('Failed to create new player instance: ' + data.error);
@@ -350,7 +354,10 @@ function openInNewInstance(streamUrl, title) {
  */
 function handlePlayMedia(message) {
   debugLog('HANDLE PLAY MEDIA CALLED');
-  debugLog('handlePlayMedia called with message: ' + JSON.stringify(message));
+  debugLog('handlePlayMedia called with message', {
+    title: message?.title,
+    streamUrl: message?.streamUrl,
+  });
   const { streamUrl, title } = message;
   debugLog(`Opening media: ${title} - ${streamUrl}`);
 
