@@ -142,41 +142,40 @@
                 Filter/Sort
               </button>
             </div>
-            <div
-              id="moviesFilterPanel"
-              class="filter-panel"
-              style="
-                display: none;
-                margin-bottom: 12px;
-                padding: 8px;
-                background: #333;
-                border-radius: 4px;
-              "
-            >
-              <div class="input-group" style="margin-bottom: 8px">
+            <div id="moviesFilterPanel" class="filter-panel" style="display: none">
+              <div class="input-group filter-group">
                 <label class="input-label">Sort By</label>
-                <select id="moviesSortSelect" class="server-select">
-                  <option value="SortName,Ascending" selected>A-Z</option>
-                  <option value="SortName,Descending">Z-A</option>
-                  <option value="DateCreated,Descending">Date Added (Newest)</option>
-                  <option value="DateCreated,Ascending">Date Added (Oldest)</option>
-                  <option value="PremiereDate,Descending">Release Date (Newest)</option>
-                  <option value="CommunityRating,Descending">Rating (Highest)</option>
-                </select>
+                <div class="select-container">
+                  <select id="moviesSortSelect" class="server-select">
+                    <option value="SortName,Ascending" selected>A-Z</option>
+                    <option value="SortName,Descending">Z-A</option>
+                    <option value="DateCreated,Descending">Date Added (Newest)</option>
+                    <option value="DateCreated,Ascending">Date Added (Oldest)</option>
+                    <option value="PremiereDate,Descending">Release Date (Newest)</option>
+                    <option value="CommunityRating,Descending">Rating (Highest)</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
-              <div class="input-group" style="margin-bottom: 8px">
+              <div class="input-group filter-group">
                 <label class="input-label">Filter</label>
-                <select id="moviesFilterSelect" class="server-select">
-                  <option value="all" selected>All</option>
-                  <option value="unwatched">Unwatched</option>
-                  <option value="favorites">Favorites</option>
-                </select>
+                <div class="select-container">
+                  <select id="moviesFilterSelect" class="server-select">
+                    <option value="all" selected>All</option>
+                    <option value="unwatched">Unwatched</option>
+                    <option value="favorites">Favorites</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
-              <div class="input-group">
+              <div class="input-group filter-group">
                 <label class="input-label">Genre</label>
-                <select id="moviesGenreSelect" class="server-select">
-                  <option value="all" selected>All Genres</option>
-                </select>
+                <div class="select-container">
+                  <select id="moviesGenreSelect" class="server-select">
+                    <option value="all" selected>All Genres</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
             </div>
             <div id="moviesList" class="media-list">
@@ -201,41 +200,40 @@
                 Filter/Sort
               </button>
             </div>
-            <div
-              id="seriesFilterPanel"
-              class="filter-panel"
-              style="
-                display: none;
-                margin-bottom: 12px;
-                padding: 8px;
-                background: #333;
-                border-radius: 4px;
-              "
-            >
-              <div class="input-group" style="margin-bottom: 8px">
+            <div id="seriesFilterPanel" class="filter-panel" style="display: none">
+              <div class="input-group filter-group">
                 <label class="input-label">Sort By</label>
-                <select id="seriesSortSelect" class="server-select">
-                  <option value="SortName,Ascending" selected>A-Z</option>
-                  <option value="SortName,Descending">Z-A</option>
-                  <option value="DateCreated,Descending">Date Added (Newest)</option>
-                  <option value="DateCreated,Ascending">Date Added (Oldest)</option>
-                  <option value="PremiereDate,Descending">Release Date (Newest)</option>
-                  <option value="CommunityRating,Descending">Rating (Highest)</option>
-                </select>
+                <div class="select-container">
+                  <select id="seriesSortSelect" class="server-select">
+                    <option value="SortName,Ascending" selected>A-Z</option>
+                    <option value="SortName,Descending">Z-A</option>
+                    <option value="DateCreated,Descending">Date Added (Newest)</option>
+                    <option value="DateCreated,Ascending">Date Added (Oldest)</option>
+                    <option value="PremiereDate,Descending">Release Date (Newest)</option>
+                    <option value="CommunityRating,Descending">Rating (Highest)</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
-              <div class="input-group" style="margin-bottom: 8px">
+              <div class="input-group filter-group">
                 <label class="input-label">Filter</label>
-                <select id="seriesFilterSelect" class="server-select">
-                  <option value="all" selected>All</option>
-                  <option value="unwatched">Unwatched</option>
-                  <option value="favorites">Favorites</option>
-                </select>
+                <div class="select-container">
+                  <select id="seriesFilterSelect" class="server-select">
+                    <option value="all" selected>All</option>
+                    <option value="unwatched">Unwatched</option>
+                    <option value="favorites">Favorites</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
-              <div class="input-group">
+              <div class="input-group filter-group">
                 <label class="input-label">Genre</label>
-                <select id="seriesGenreSelect" class="server-select">
-                  <option value="all" selected>All Genres</option>
-                </select>
+                <div class="select-container">
+                  <select id="seriesGenreSelect" class="server-select">
+                    <option value="all" selected>All Genres</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
               </div>
             </div>
             <div id="seriesList" class="media-list">
@@ -254,6 +252,14 @@
               class="text-input search-input"
               placeholder="Search for movies, shows..."
             />
+            <div class="search-type-filters">
+              <button class="search-type-chip active" data-type="Movie">
+                <span class="chip-icon">🎬</span> Movies
+              </button>
+              <button class="search-type-chip active" data-type="Series">
+                <span class="chip-icon">📺</span> Series
+              </button>
+            </div>
           </div>
           <div class="media-section">
             <div id="searchResults" class="media-list">
@@ -268,9 +274,12 @@
         <div class="section-title">Select Episode</div>
         <div class="input-group">
           <label class="input-label">Season</label>
-          <select id="seasonSelect" class="server-select season-select">
-            <option value="">Loading seasons...</option>
-          </select>
+          <div class="select-container">
+            <select id="seasonSelect" class="server-select season-select">
+              <option value="">Loading seasons...</option>
+            </select>
+            <span class="select-arrow">&#9662;</span>
+          </div>
         </div>
         <div id="episodeList" class="episode-list">
           <div class="loading">Select a season</div>

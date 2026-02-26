@@ -53,7 +53,6 @@ body {
   gap: 8px;
 }
 
-.server-select,
 .text-input {
   background: var(--jf-input);
   border: 1px solid var(--jf-border);
@@ -63,12 +62,73 @@ body {
   font-size: 12px;
 }
 
-.server-select:focus,
-.text-input:focus,
-.season-select:focus {
+.text-input:focus {
   outline: 2px solid var(--jf-accent);
   outline-offset: 1px;
   border-color: var(--jf-accent);
+}
+
+/* Jellyfin-style select (emby-select-withcolor) */
+.select-container {
+  position: relative;
+  margin-bottom: 0;
+}
+
+.select-container .select-arrow {
+  position: absolute;
+  top: 50%;
+  right: 0.55em;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--jf-text-muted);
+  font-size: 10px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.select-container:focus-within .select-arrow {
+  color: var(--jf-accent);
+}
+
+.server-select,
+.season-select {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  font-family: inherit;
+  font-weight: inherit;
+  font-size: 12px;
+  outline: none !important;
+  background: var(--jf-surface-alt);
+  border: 0.12em solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.25em;
+  color: var(--jf-text);
+  padding: 0.5em 1.9em 0.5em 0.5em;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.server-select:hover,
+.season-select:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.server-select:focus,
+.season-select:focus {
+  border-color: var(--jf-accent);
+  box-shadow: 0 0 0 1px var(--jf-accent);
+}
+
+.server-select > option,
+.season-select > option {
+  background: var(--jf-surface);
+  color: var(--jf-text);
+  padding: 4px 8px;
 }
 
 .search-input {
@@ -483,6 +543,23 @@ body {
   transform: none;
 }
 
+/* Filter panel */
+.filter-panel {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: var(--jf-surface-alt);
+  border: 1px solid var(--jf-border);
+  border-radius: 6px;
+}
+
+.filter-group {
+  margin-bottom: 8px;
+}
+
+.filter-group:last-child {
+  margin-bottom: 0;
+}
+
 /* Episode picker */
 .episode-section {
   display: none;
@@ -654,6 +731,52 @@ body {
   font-size: 12px;
   opacity: 0.7;
   font-style: italic;
+}
+
+/* Search type filter chips */
+.search-type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.search-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  border: 1px solid var(--jf-border);
+  border-radius: 16px;
+  background: var(--jf-surface-alt);
+  color: var(--jf-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.search-type-chip:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--jf-text);
+}
+
+.search-type-chip.active {
+  background: rgba(0, 164, 220, 0.16);
+  border-color: var(--jf-accent);
+  color: var(--jf-text);
+}
+
+.search-type-chip.active:hover {
+  background: rgba(0, 164, 220, 0.24);
+}
+
+.chip-icon {
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* Scrollbars */

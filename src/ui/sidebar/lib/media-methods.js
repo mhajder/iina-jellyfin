@@ -283,6 +283,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }, 500);
     },
 
+    getSelectedSearchTypes() {
+      const activeChips = document.querySelectorAll('.search-type-chip.active');
+      return Array.from(activeChips).map((chip) => chip.dataset.type);
+    },
+
     async search(term) {
       if (!this.currentServer || !this.currentUser || !term.trim()) {
         document.getElementById('searchResults').innerHTML =
@@ -290,7 +295,15 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         return;
       }
 
+      const selectedTypes = this.getSelectedSearchTypes();
       const searchResults = document.getElementById('searchResults');
+
+      if (selectedTypes.length === 0) {
+        searchResults.innerHTML =
+          '<div class="empty-state">Select at least one media type to search</div>';
+        return;
+      }
+
       searchResults.innerHTML = '<div class="loading">Searching...</div>';
 
       try {
@@ -298,7 +311,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           userId: this.currentUser.Id,
           searchTerm: term,
           limit: 20,
-          includeItemTypes: 'Movie,Series',
+          includeItemTypes: selectedTypes.join(','),
         });
 
         const fullUrl = `${this.currentServer.url}/Search/Hints?${params.toString()}`;
