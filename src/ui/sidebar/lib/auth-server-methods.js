@@ -334,7 +334,10 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         const httpClient = this.getHttpClient();
 
         const enabledResponse = await httpClient.get(`${normalizedUrl}/QuickConnect/Enabled`);
-        debugLog('Quick Connect enabled response: ' + JSON.stringify(enabledResponse.data));
+        debugLog('Quick Connect enabled response', {
+          status: enabledResponse.status,
+          enabled: enabledResponse.data,
+        });
 
         if (enabledResponse.data !== true && enabledResponse.data !== 'true') {
           errorEl.textContent =
@@ -352,7 +355,11 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           },
         });
 
-        debugLog('Quick Connect initiate response: ' + JSON.stringify(initiateResponse.data));
+        debugLog('Quick Connect initiate response', {
+          status: initiateResponse.status,
+          hasSecret: !!initiateResponse?.data?.Secret,
+          code: initiateResponse?.data?.Code,
+        });
 
         if (
           !initiateResponse.data ||
@@ -404,7 +411,10 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             `${this.qcServerUrl}/QuickConnect/Connect?secret=${this.qcSecret}`
           );
 
-          debugLog('Quick Connect poll response: ' + JSON.stringify(response.data));
+          debugLog('Quick Connect poll response', {
+            status: response.status,
+            authenticated: response?.data?.Authenticated,
+          });
 
           if (response.data && response.data.Authenticated === true) {
             debugLog('Quick Connect approved! Authenticating...');
@@ -437,7 +447,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           }
         );
 
-        debugLog('Quick Connect auth response: ' + JSON.stringify(response.data).substring(0, 500));
+        debugLog('Quick Connect auth response', {
+          status: response.status,
+          hasAccessToken: !!response?.data?.AccessToken,
+          userId: response?.data?.User?.Id,
+          userName: response?.data?.User?.Name,
+        });
 
         if (response.data && response.data.AccessToken) {
           const accessToken = response.data.AccessToken;
@@ -515,7 +530,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('loginError');
 
-      debugLog('Login inputs: ' + JSON.stringify({ serverUrl, username, password: '[HIDDEN]' }));
+      debugLog('Login inputs', { serverUrl, username, password: '[HIDDEN]' });
 
       if (!serverUrl || !username || !password) {
         errorEl.textContent = 'Please fill in all fields';
@@ -532,7 +547,14 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
         debugLog('Starting authentication...');
         const authResult = await this.authenticateUser(normalizedUrl, username, password);
-        debugLog('Authentication result: ' + JSON.stringify(authResult));
+        debugLog('Authentication result', {
+          success: authResult?.success,
+          hasAccessToken: !!authResult?.accessToken,
+          userId: authResult?.user?.Id,
+          userName: authResult?.user?.Name,
+          serverName: authResult?.serverName,
+          error: authResult?.error,
+        });
 
         if (authResult.success) {
           debugLog('Authentication successful');
@@ -609,30 +631,29 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         };
 
         debugLog('Auth URL: ' + authUrl);
-        debugLog(
-          'Auth data: ' +
-            JSON.stringify({
-              Username: username,
-              Pw: '[HIDDEN]',
-            })
-        );
+        debugLog('Auth data', {
+          Username: username,
+          Pw: '[HIDDEN]',
+        });
 
         const httpClient = this.getHttpClient();
         try {
           debugLog('Checking server reachability...');
           const publicInfoResponse = await httpClient.get(`${serverUrl}/System/Info/Public`);
-          debugLog('Server public info: ' + JSON.stringify(publicInfoResponse));
+          debugLog('Server public info', {
+            status: publicInfoResponse.status,
+            serverName: publicInfoResponse?.data?.ServerName,
+            version: publicInfoResponse?.data?.Version,
+            startupWizardCompleted: publicInfoResponse?.data?.StartupWizardCompleted,
+          });
           debugLog('Server is reachable');
         } catch (serverError) {
           debugLog('Server reachability check failed: ' + serverError);
-          debugLog(
-            'Error details: ' +
-              JSON.stringify({
-                message: serverError.message,
-                status: serverError.status,
-                statusText: serverError.statusText,
-              })
-          );
+          debugLog('Error details', {
+            message: serverError.message,
+            status: serverError.status,
+            statusText: serverError.statusText,
+          });
           debugLog('Warning: Server reachability check failed, but proceeding with authentication');
         }
 
@@ -647,8 +668,15 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         });
 
         debugLog('Auth response status: ' + response.status);
-        debugLog('Auth response data: ' + JSON.stringify(response.data));
-        debugLog('Auth response headers: ' + JSON.stringify(response.headers));
+        debugLog('Auth response data', {
+          hasAccessToken: !!response?.data?.AccessToken,
+          userId: response?.data?.User?.Id,
+          userName: response?.data?.User?.Name,
+          serverId: response?.data?.ServerId,
+        });
+        debugLog('Auth response headers', {
+          headerCount: response?.headers ? Object.keys(response.headers).length : 0,
+        });
 
         if (response.data && response.data.AccessToken) {
           debugLog('Authentication successful');
@@ -671,7 +699,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         }
 
         debugLog('Authentication failed - no access token in response');
-        debugLog('Response data details: ' + JSON.stringify(response.data, null, 2));
+        debugLog('Response data details', {
+          responseKeys: response?.data ? Object.keys(response.data) : [],
+        });
 
         if (response.data && response.data.error) {
           return {

@@ -13,7 +13,11 @@ debugLog('Jellyfin Plugin Global Entry loaded');
 
 // Listen for messages from main entries to create new instances
 global.onMessage('create-player', (data, player) => {
-  debugLog('Global entry received create-player message: ' + JSON.stringify(data));
+  debugLog('Global entry received create-player message', {
+    hasData: !!data,
+    url: data?.url,
+    title: data?.title,
+  });
 
   try {
     const { url, title } = data;
