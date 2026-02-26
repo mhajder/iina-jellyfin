@@ -101,6 +101,7 @@
           <button class="tab-button active" data-tab="home">Home</button>
           <button class="tab-button" data-tab="movies">Movies</button>
           <button class="tab-button" data-tab="series">Series</button>
+          <button class="tab-button" data-tab="music">Music</button>
           <button class="tab-button" data-tab="search">Search</button>
         </div>
 
@@ -242,6 +243,64 @@
           </div>
         </div>
 
+        <!-- Music Tab -->
+        <div id="musicTab" class="tab-content">
+          <div class="media-section">
+            <div
+              class="section-title"
+              style="display: flex; justify-content: space-between; align-items: center"
+            >
+              <span>Music</span>
+              <button
+                id="musicFilterBtn"
+                class="button secondary"
+                style="padding: 4px 8px; font-size: 10px"
+              >
+                Filter/Sort
+              </button>
+            </div>
+            <div id="musicFilterPanel" class="filter-panel" style="display: none">
+              <div class="input-group filter-group">
+                <label class="input-label">View</label>
+                <div class="select-container">
+                  <select id="musicViewSelect" class="server-select">
+                    <option value="albums" selected>Albums</option>
+                    <option value="artists">Artists</option>
+                    <option value="songs">Songs</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
+              </div>
+              <div class="input-group filter-group">
+                <label class="input-label">Sort By</label>
+                <div class="select-container">
+                  <select id="musicSortSelect" class="server-select">
+                    <option value="SortName,Ascending" selected>A-Z</option>
+                    <option value="SortName,Descending">Z-A</option>
+                    <option value="DateCreated,Descending">Date Added (Newest)</option>
+                    <option value="DateCreated,Ascending">Date Added (Oldest)</option>
+                    <option value="PremiereDate,Descending">Release Date (Newest)</option>
+                    <option value="CommunityRating,Descending">Rating (Highest)</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
+              </div>
+              <div class="input-group filter-group">
+                <label class="input-label">Genre</label>
+                <div class="select-container">
+                  <select id="musicGenreSelect" class="server-select">
+                    <option value="all" selected>All Genres</option>
+                  </select>
+                  <span class="select-arrow">&#9662;</span>
+                </div>
+              </div>
+            </div>
+            <div id="musicList" class="media-list">
+              <div class="loading">Loading music...</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Search Tab -->
         <div id="searchTab" class="tab-content">
           <div class="search-section">
@@ -259,6 +318,12 @@
               <button class="search-type-chip active" data-type="Series">
                 <span class="chip-icon">📺</span> Series
               </button>
+              <button class="search-type-chip active" data-type="MusicAlbum">
+                <span class="chip-icon">💿</span> Albums
+              </button>
+              <button class="search-type-chip active" data-type="Audio">
+                <span class="chip-icon">🎵</span> Songs
+              </button>
             </div>
           </div>
           <div class="media-section">
@@ -267,6 +332,23 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Album Track Selection -->
+      <div id="albumTracksSection" class="episode-section">
+        <div class="section-title" id="albumTracksTitle">Album Tracks</div>
+        <div id="albumTracksList" class="episode-list">
+          <div class="loading">Loading tracks...</div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 8px">
+          <button id="playAllTracksBtn" class="button" disabled>Play All</button>
+          <button id="openAlbumInJellyfinBtn" class="button secondary" disabled>
+            Open in Jellyfin
+          </button>
+        </div>
+        <button id="cancelAlbumTracksBtn" class="button secondary" style="margin-top: 8px">
+          Back
+        </button>
       </div>
 
       <!-- Episode Selection -->

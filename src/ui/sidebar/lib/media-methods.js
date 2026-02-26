@@ -4,6 +4,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       document.getElementById('mainContent').style.display = 'block';
       this.scrollToTop();
       this.loadGenres();
+      this.loadMusicGenres();
     },
 
     async loadGenres() {
@@ -46,6 +47,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     hideMainContent() {
       document.getElementById('mainContent').style.display = 'none';
       this.hideEpisodeSelection();
+      this.hideAlbumTracks();
     },
 
     scrollToTop() {
@@ -418,6 +420,12 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         subtitle = 'TV Series';
       } else if (item.Type === 'Movie') {
         subtitle = 'Movie';
+      } else if (item.Type === 'MusicAlbum') {
+        subtitle = item.AlbumArtist || 'Album';
+      } else if (item.Type === 'Audio') {
+        const artist = item.AlbumArtist || item.Artists?.join(', ') || '';
+        const album = item.Album || '';
+        subtitle = [artist, album].filter(Boolean).join(' — ');
       }
 
       const thumbHtml = thumbUrl
@@ -435,7 +443,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
                 <div class="media-meta">${type}</div>
                 <div class="media-actions">
                     <button class="button media-action-btn" data-action="select">
-                        ${item.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                        ${item.Type === 'Series' ? 'Browse Episodes' : item.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
                     </button>
                     <button class="button secondary media-action-btn" data-action="open-jellyfin">
                         Jellyfin
@@ -508,7 +516,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
                 <div class="media-meta">${type}</div>
                 <div class="media-actions">
                     <button class="button search-action-btn" data-action="select">
-                        ${hint.Type === 'Series' ? 'Browse Episodes' : 'Play'}
+                        ${hint.Type === 'Series' ? 'Browse Episodes' : hint.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
                     </button>
                     <button class="button secondary search-action-btn" data-action="open-jellyfin">
                         Open in Jellyfin
@@ -562,8 +570,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       if (item.Type === 'Series') {
         debugLog('Item is a Series, showing episode selection');
         this.showEpisodeSelection(item);
+      } else if (item.Type === 'MusicAlbum') {
+        debugLog('Item is a MusicAlbum, showing album tracks');
+        this.showAlbumTracks(item);
       } else {
-        debugLog('Item is not a Series, playing media: ' + item.Type);
+        debugLog('Item is not a Series or Album, playing media: ' + item.Type);
         this.playMedia(item);
       }
     },
@@ -850,6 +861,426 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         debugLog(`Error checking episode availability for ${episode.Name}: ${error.message}`);
         return false;
       }
+    },
+
+    async loadMusic() {
+      if (!this.currentServer || !this.currentUser) return;
+
+      const container = document.getElementById('musicList');
+      container.innerHTML = '<div class="loading">Loading music...</div>';
+
+      try {
+        const viewMode = document.getElementById('musicViewSelect').value;
+        const sortValue = document.getElementById('musicSortSelect').value.split(',');
+        const genreValue = document.getElementById('musicGenreSelect').value;
+
+        if (viewMode === 'artists') {
+          await this.loadMusicArtists(container, sortValue, genreValue);
+        } else if (viewMode === 'songs') {
+          await this.loadMusicSongs(container, sortValue, genreValue);
+        } else {
+          await this.loadMusicAlbums(container, sortValue, genreValue);
+        }
+      } catch (error) {
+        debugLog('Error loading music:', error);
+        container.innerHTML = '<div class="error">Failed to load music</div>';
+      }
+    },
+
+    async loadMusicAlbums(container, sortValue, genreValue) {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        IncludeItemTypes: 'MusicAlbum',
+        Recursive: true,
+        SortBy: sortValue[0],
+        SortOrder: sortValue[1],
+        Fields:
+          'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags,AlbumArtist,ChildCount',
+        EnableImageTypes: 'Primary',
+        Limit: 50,
+      });
+
+      if (genreValue !== 'all') {
+        params.append('Genres', genreValue);
+      }
+
+      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMusicList(response.data.Items, container, 'album');
+      } else {
+        container.innerHTML = '<div class="empty-state">No albums found</div>';
+      }
+    },
+
+    async loadMusicArtists(container, sortValue, genreValue) {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        SortBy: sortValue[0],
+        SortOrder: sortValue[1],
+        Fields: 'Overview,UserData,ImageTags,BackdropImageTags',
+        EnableImageTypes: 'Primary',
+        Limit: 50,
+      });
+
+      if (genreValue !== 'all') {
+        params.append('Genres', genreValue);
+      }
+
+      const fullUrl = `${this.currentServer.url}/Artists?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMusicList(response.data.Items, container, 'artist');
+      } else {
+        container.innerHTML = '<div class="empty-state">No artists found</div>';
+      }
+    },
+
+    async loadMusicSongs(container, sortValue, genreValue) {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        IncludeItemTypes: 'Audio',
+        Recursive: true,
+        SortBy: sortValue[0],
+        SortOrder: sortValue[1],
+        Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,AlbumArtist,Album,AlbumId',
+        EnableImageTypes: 'Primary',
+        Limit: 50,
+      });
+
+      if (genreValue !== 'all') {
+        params.append('Genres', genreValue);
+      }
+
+      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items && response.data.Items.length > 0) {
+        this.renderMusicList(response.data.Items, container, 'song');
+      } else {
+        container.innerHTML = '<div class="empty-state">No songs found</div>';
+      }
+    },
+
+    async loadMusicGenres() {
+      if (!this.currentServer || !this.currentUser) return;
+
+      try {
+        const params = new URLSearchParams({
+          userId: this.currentUser.Id,
+          IncludeItemTypes: 'MusicAlbum,Audio',
+        });
+
+        const fullUrl = `${this.currentServer.url}/MusicGenres?${params.toString()}`;
+
+        const response = await this.getHttpClient().get(fullUrl, {
+          headers: {
+            'X-Emby-Token': this.currentServer.accessToken,
+          },
+        });
+
+        if (response.data && response.data.Items) {
+          const musicGenreSelect = document.getElementById('musicGenreSelect');
+          let optionsHtml = '<option value="all" selected>All Genres</option>';
+
+          response.data.Items.forEach((genre) => {
+            optionsHtml += `<option value="${genre.Name}">${genre.Name}</option>`;
+          });
+
+          musicGenreSelect.innerHTML = optionsHtml;
+        }
+      } catch (error) {
+        debugLog('Error loading music genres:', error);
+      }
+    },
+
+    getMusicThumbnailUrl(item, maxWidth = 96) {
+      if (!this.currentServer) return null;
+      const base = this.currentServer.url;
+      const token = this.currentServer.accessToken;
+
+      if (item.ImageTags && item.ImageTags.Primary) {
+        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+      }
+      if (item.AlbumId) {
+        return `${base}/Items/${item.AlbumId}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+      }
+      if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
+        return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&api_key=${token}`;
+      }
+      return null;
+    },
+
+    renderMusicList(items, container, viewType) {
+      debugLog('renderMusicList called with ' + (items?.length || 0) + ' items, view: ' + viewType);
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="empty-state">No items found</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      items.forEach((item) => {
+        const itemEl = this.createMusicItemElement(item, viewType);
+        container.appendChild(itemEl);
+      });
+    },
+
+    createMusicItemElement(item, viewType) {
+      const itemEl = document.createElement('div');
+      itemEl.className = 'music-item';
+      itemEl.dataset.itemId = item.Id;
+      itemEl.dataset.itemType = item.Type;
+
+      const title = item.Name || 'Unknown Title';
+      const thumbUrl = this.getMusicThumbnailUrl(item);
+      const duration = this.formatRuntime(item.RunTimeTicks);
+
+      let subtitle = '';
+      let fallbackIcon = '\ud83c\udfb5';
+
+      if (viewType === 'album') {
+        subtitle = item.AlbumArtist || item.AlbumArtists?.map((a) => a.Name).join(', ') || '';
+        const trackCount = item.ChildCount ? `${item.ChildCount} tracks` : '';
+        const year = item.ProductionYear ? `${item.ProductionYear}` : '';
+        const metaParts = [year, trackCount].filter(Boolean);
+        subtitle = [subtitle, metaParts.join(' \u00b7 ')].filter(Boolean).join(' \u2014 ');
+        fallbackIcon = '\ud83d\udcbf';
+      } else if (viewType === 'artist') {
+        subtitle = 'Artist';
+        fallbackIcon = '\ud83c\udfa4';
+      } else if (viewType === 'song') {
+        const artist = item.AlbumArtist || item.AlbumArtists?.map((a) => a.Name).join(', ') || '';
+        const album = item.Album || '';
+        subtitle = [artist, album].filter(Boolean).join(' \u2014 ');
+        fallbackIcon = '\ud83c\udfb5';
+      }
+
+      const thumbHtml = thumbUrl
+        ? `<div class="album-thumb-wrapper">
+           <img class="album-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none'; this.parentElement.textContent='${fallbackIcon}';" />
+         </div>`
+        : `<div class="album-thumb-wrapper thumb-fallback">${fallbackIcon}</div>`;
+
+      let actionLabel = 'Play';
+      if (viewType === 'album') {
+        actionLabel = 'View Tracks';
+      } else if (viewType === 'artist') {
+        actionLabel = 'View Albums';
+      }
+
+      itemEl.innerHTML = `
+        ${thumbHtml}
+        <div class="list-body">
+          <div class="media-title">${title}</div>
+          ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
+          <div class="media-actions">
+            <button class="button media-action-btn" data-action="select">${actionLabel}</button>
+            <button class="button secondary media-action-btn" data-action="open-jellyfin">Jellyfin</button>
+          </div>
+        </div>
+        ${duration ? `<div class="list-duration">${duration}</div>` : ''}
+      `;
+
+      const actionButtons = itemEl.querySelectorAll('.media-action-btn');
+      actionButtons.forEach((button) => {
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const action = button.dataset.action;
+          if (action === 'select') {
+            this.selectMusicItem(item, viewType);
+          } else if (action === 'open-jellyfin') {
+            this.openInJellyfin(item);
+          }
+        });
+      });
+
+      itemEl.addEventListener('click', () => {
+        this.selectMusicItem(item, viewType);
+      });
+
+      return itemEl;
+    },
+
+    selectMusicItem(item, viewType) {
+      debugLog('selectMusicItem called', {
+        id: item?.Id,
+        type: item?.Type,
+        name: item?.Name,
+        viewType,
+      });
+
+      if (viewType === 'album' || item.Type === 'MusicAlbum') {
+        this.showAlbumTracks(item);
+      } else if (viewType === 'artist' || item.Type === 'MusicArtist') {
+        this.showArtistAlbums(item);
+      } else {
+        // Song - play directly
+        this.playMedia(item);
+      }
+    },
+
+    async showArtistAlbums(artist) {
+      if (!this.currentServer || !this.currentUser) return;
+
+      const container = document.getElementById('musicList');
+      container.innerHTML = '<div class="loading">Loading albums...</div>';
+
+      try {
+        const params = new URLSearchParams({
+          userId: this.currentUser.Id,
+          IncludeItemTypes: 'MusicAlbum',
+          Recursive: true,
+          SortBy: 'ProductionYear,SortName',
+          SortOrder: 'Descending',
+          AlbumArtistIds: artist.Id,
+          Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,AlbumArtist,ChildCount',
+          EnableImageTypes: 'Primary',
+          Limit: 50,
+        });
+
+        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+        const response = await this.getHttpClient().get(fullUrl, {
+          headers: {
+            'X-Emby-Token': this.currentServer.accessToken,
+          },
+        });
+
+        if (response.data && response.data.Items && response.data.Items.length > 0) {
+          this.renderMusicList(response.data.Items, container, 'album');
+        } else {
+          container.innerHTML = `<div class="empty-state">No albums found for ${artist.Name}</div>`;
+        }
+      } catch (error) {
+        debugLog('Error loading artist albums:', error);
+        container.innerHTML = '<div class="error">Failed to load albums</div>';
+      }
+    },
+
+    async showAlbumTracks(album) {
+      debugLog('showAlbumTracks called for album:', album.Name);
+
+      document.getElementById('albumTracksSection').style.display = 'block';
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('albumTracksTitle').textContent =
+        album.Name + (album.AlbumArtist ? ` — ${album.AlbumArtist}` : '');
+
+      this.selectedAlbum = album;
+      this.selectedTrack = null;
+      document.getElementById('playAllTracksBtn').disabled = false;
+      document.getElementById('openAlbumInJellyfinBtn').disabled = false;
+
+      const tracksList = document.getElementById('albumTracksList');
+      tracksList.innerHTML = '<div class="loading">Loading tracks...</div>';
+
+      try {
+        const params = new URLSearchParams({
+          userId: this.currentUser.Id,
+          ParentId: album.Id,
+          SortBy: 'ParentIndexNumber,IndexNumber,SortName',
+          SortOrder: 'Ascending',
+          Fields: 'RunTimeTicks,MediaSources,Path,UserData,ImageTags,AlbumArtist,Artists',
+          IncludeItemTypes: 'Audio',
+        });
+
+        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+
+        const response = await this.getHttpClient().get(fullUrl, {
+          headers: {
+            'X-Emby-Token': this.currentServer.accessToken,
+          },
+        });
+
+        if (response.data && response.data.Items && response.data.Items.length > 0) {
+          this.albumTracks = response.data.Items;
+          this.renderAlbumTracks(response.data.Items, tracksList);
+        } else {
+          this.albumTracks = [];
+          tracksList.innerHTML = '<div class="empty-state">No tracks found</div>';
+        }
+      } catch (error) {
+        debugLog('Error loading album tracks:', error);
+        tracksList.innerHTML = '<div class="error">Failed to load tracks</div>';
+      }
+    },
+
+    renderAlbumTracks(tracks, container) {
+      container.innerHTML = '';
+
+      tracks.forEach((track, index) => {
+        const trackEl = document.createElement('div');
+        trackEl.className = 'track-item';
+        trackEl.dataset.trackId = track.Id;
+
+        const trackNum = track.IndexNumber || index + 1;
+        const title = track.Name || `Track ${trackNum}`;
+        const duration = this.formatRuntime(track.RunTimeTicks);
+        const artists = track.Artists?.join(', ') || track.AlbumArtist || '';
+
+        trackEl.innerHTML = `
+          <span class="track-number">${trackNum}</span>
+          <div class="track-body">
+            <span class="track-title">${title}</span>
+            ${artists ? `<span class="track-artist">${artists}</span>` : ''}
+          </div>
+          ${duration ? `<span class="track-duration">${duration}</span>` : ''}
+        `;
+
+        trackEl.addEventListener('click', () => {
+          document.querySelectorAll('.track-item').forEach((el) => el.classList.remove('selected'));
+          trackEl.classList.add('selected');
+          this.selectedTrack = track;
+          this.playMedia(track);
+        });
+
+        container.appendChild(trackEl);
+      });
+    },
+
+    playAllAlbumTracks() {
+      if (!this.albumTracks || this.albumTracks.length === 0) {
+        debugLog('No album tracks to play');
+        return;
+      }
+
+      debugLog('Playing all album tracks, count:', this.albumTracks.length);
+      // Play first track, subsequent tracks will need to be handled by IINA's playlist
+      const firstTrack = this.albumTracks[0];
+      this.playMedia(firstTrack);
+    },
+
+    openAlbumInJellyfin() {
+      if (this.selectedAlbum) {
+        this.openInJellyfin(this.selectedAlbum);
+      }
+    },
+
+    hideAlbumTracks() {
+      document.getElementById('albumTracksSection').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      this.selectedAlbum = null;
+      this.selectedTrack = null;
+      this.albumTracks = [];
+      document.getElementById('albumTracksList').innerHTML = '';
+      document.getElementById('playAllTracksBtn').disabled = true;
+      document.getElementById('openAlbumInJellyfinBtn').disabled = true;
     },
 
     async playMedia(item) {

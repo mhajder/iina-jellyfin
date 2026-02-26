@@ -88,6 +88,9 @@ class JellyfinSidebar {
     this.selectedItem = null;
     this.selectedSeason = null;
     this.selectedEpisode = null;
+    this.selectedAlbum = null;
+    this.selectedTrack = null;
+    this.albumTracks = [];
     this.searchTimeout = null;
     this.pendingSessionData = null;
 
@@ -231,12 +234,21 @@ class JellyfinSidebar {
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     });
 
+    document.getElementById('musicFilterBtn').addEventListener('click', () => {
+      const panel = document.getElementById('musicFilterPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
     ['moviesSortSelect', 'moviesFilterSelect', 'moviesGenreSelect'].forEach((id) => {
       document.getElementById(id).addEventListener('change', () => this.loadMovies());
     });
 
     ['seriesSortSelect', 'seriesFilterSelect', 'seriesGenreSelect'].forEach((id) => {
       document.getElementById(id).addEventListener('change', () => this.loadSeries());
+    });
+
+    ['musicViewSelect', 'musicSortSelect', 'musicGenreSelect'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', () => this.loadMusic());
     });
 
     // Episode selection
@@ -254,6 +266,19 @@ class JellyfinSidebar {
 
     document.getElementById('cancelEpisodeBtn').addEventListener('click', () => {
       this.hideEpisodeSelection();
+    });
+
+    // Album tracks selection
+    document.getElementById('playAllTracksBtn').addEventListener('click', () => {
+      this.playAllAlbumTracks();
+    });
+
+    document.getElementById('openAlbumInJellyfinBtn').addEventListener('click', () => {
+      this.openAlbumInJellyfin();
+    });
+
+    document.getElementById('cancelAlbumTracksBtn').addEventListener('click', () => {
+      this.hideAlbumTracks();
     });
 
     // Enter key handling
@@ -287,6 +312,8 @@ class JellyfinSidebar {
           this.loadMovies();
         } else if (tabName === 'series' && this.currentUser) {
           this.loadSeries();
+        } else if (tabName === 'music' && this.currentUser) {
+          this.loadMusic();
         }
       });
     });
