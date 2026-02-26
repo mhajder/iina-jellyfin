@@ -144,6 +144,25 @@ class JellyfinSidebar {
       this.debounceSearch(e.target.value);
     });
 
+    // Filters
+    document.getElementById('moviesFilterBtn').addEventListener('click', () => {
+      const panel = document.getElementById('moviesFilterPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.getElementById('seriesFilterBtn').addEventListener('click', () => {
+      const panel = document.getElementById('seriesFilterPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+
+    ['moviesSortSelect', 'moviesFilterSelect', 'moviesGenreSelect'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', () => this.loadMovies());
+    });
+
+    ['seriesSortSelect', 'seriesFilterSelect', 'seriesGenreSelect'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', () => this.loadSeries());
+    });
+
     // Episode selection
     document.getElementById('seasonSelect').addEventListener('change', (e) => {
       this.loadEpisodes(e.target.value);
@@ -1033,6 +1052,45 @@ class JellyfinSidebar {
   showMainContent() {
     document.getElementById('mainContent').style.display = 'block';
     this.scrollToTop();
+    this.loadGenres();
+  }
+
+  async loadGenres() {
+    if (!this.currentServer || !this.currentUser) return;
+
+    try {
+      const params = new URLSearchParams({
+        userId: this.currentUser.Id,
+        Recursive: true,
+        IncludeItemTypes: 'Movie,Series',
+      });
+
+      const fullUrl = `${this.currentServer.url}/Genres?${params.toString()}`;
+
+      const response = await this.getHttpClient().get(fullUrl, {
+        headers: {
+          'X-Emby-Token': this.currentServer.accessToken,
+        },
+      });
+
+      if (response.data && response.data.Items) {
+        const moviesGenreSelect = document.getElementById('moviesGenreSelect');
+        const seriesGenreSelect = document.getElementById('seriesGenreSelect');
+
+        // Keep the "All Genres" option
+        const allOption = '<option value="all" selected>All Genres</option>';
+        let optionsHtml = allOption;
+
+        response.data.Items.forEach((genre) => {
+          optionsHtml += `<option value="${genre.Name}">${genre.Name}</option>`;
+        });
+
+        moviesGenreSelect.innerHTML = optionsHtml;
+        seriesGenreSelect.innerHTML = optionsHtml;
+      }
+    } catch (error) {
+      debugLog('Error loading genres:', error);
+    }
   }
 
   hideMainContent() {
@@ -1185,16 +1243,30 @@ class JellyfinSidebar {
     container.innerHTML = '<div class="loading">Loading movies...</div>';
 
     try {
+      const sortValue = document.getElementById('moviesSortSelect').value.split(',');
+      const filterValue = document.getElementById('moviesFilterSelect').value;
+      const genreValue = document.getElementById('moviesGenreSelect').value;
+
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         IncludeItemTypes: 'Movie',
         Recursive: true,
-        SortBy: 'SortName',
-        SortOrder: 'Ascending',
+        SortBy: sortValue[0],
+        SortOrder: sortValue[1],
         Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags',
         EnableImageTypes: 'Primary,Backdrop,Thumb',
         Limit: 50,
       });
+
+      if (filterValue === 'unwatched') {
+        params.append('IsPlayed', 'false');
+      } else if (filterValue === 'favorites') {
+        params.append('Filters', 'IsFavorite');
+      }
+
+      if (genreValue !== 'all') {
+        params.append('Genres', genreValue);
+      }
 
       const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
 
@@ -1225,16 +1297,30 @@ class JellyfinSidebar {
     container.innerHTML = '<div class="loading">Loading series...</div>';
 
     try {
+      const sortValue = document.getElementById('seriesSortSelect').value.split(',');
+      const filterValue = document.getElementById('seriesFilterSelect').value;
+      const genreValue = document.getElementById('seriesGenreSelect').value;
+
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         IncludeItemTypes: 'Series',
         Recursive: true,
-        SortBy: 'SortName',
-        SortOrder: 'Ascending',
+        SortBy: sortValue[0],
+        SortOrder: sortValue[1],
         Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags',
         EnableImageTypes: 'Primary,Backdrop,Thumb',
         Limit: 50,
       });
+
+      if (filterValue === 'unwatched') {
+        params.append('IsPlayed', 'false');
+      } else if (filterValue === 'favorites') {
+        params.append('Filters', 'IsFavorite');
+      }
+
+      if (genreValue !== 'all') {
+        params.append('Genres', genreValue);
+      }
 
       const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
 

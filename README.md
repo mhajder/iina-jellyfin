@@ -21,6 +21,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Server management**: Easily add/remove servers and view saved server connections in the sidebar
 - **Recent items browser**: Browse recently added movies and TV shows
 - **Search functionality**: Search your Jellyfin library for specific content
+- **Advanced filtering & sorting**: Sort by name, date added, release date, or rating; filter by watch status, favorites, and genre
 - **Series episode selection**: Browse seasons and episodes for TV shows
 - **Episode availability detection**: Unavailable episodes are visually marked and cannot be clicked
 - **Direct playback**: Click to play media directly in IINA
@@ -105,6 +106,32 @@ Once you have servers saved:
 2. Click any media item to play it in IINA
 3. Use the player controls or keyboard shortcuts to control playback
 4. Your progress will automatically sync back to Jellyfin
+
+##### Advanced Filtering & Sorting
+
+The Movies and TV Series tabs include powerful filtering and sorting tools to help you navigate large libraries:
+
+**Sort Options:**
+
+- **A-Z**: Sort alphabetically by title
+- **Z-A**: Reverse alphabetical order
+- **Date Added (Newest)**: Show recently added items first
+- **Date Added (Oldest)**: Show oldest added items first
+- **Release Date (Newest)**: Sort by year of release (newest first)
+- **Rating (Highest)**: Sort by community rating (highest first)
+
+**Filter Options:**
+
+- **All**: Show all items
+- **Unwatched**: Show only items you haven't watched yet
+- **Favorites**: Show only items marked as favorites
+
+**Genre Filter:**
+
+- Dynamically populated list of genres from your library
+- Select a specific genre to view only items in that category
+
+Click the "Filter/Sort" button in the Movies or TV Series tab header to toggle the filter panel and customize your view.
 
 ## Supported URL Formats
 
