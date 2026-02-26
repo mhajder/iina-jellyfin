@@ -565,6 +565,126 @@ body {
   display: none;
 }
 
+/* Album tracks section (reuses episode-section layout) */
+#albumTracksSection {
+  display: none;
+}
+
+/* Music-specific styles */
+.music-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--jf-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: var(--jf-surface-alt);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.music-item:hover {
+  background: #1e1e1e;
+  border-color: #3a3a3a;
+  box-shadow: 0 2px 8px rgba(0, 164, 220, 0.2);
+}
+
+.music-item.selected {
+  background: rgba(0, 164, 220, 0.18);
+  border-color: var(--jf-accent);
+}
+
+.album-thumb-wrapper {
+  position: relative;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #2f2f2f;
+}
+
+.album-thumb-wrapper.thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #383838;
+  font-size: 20px;
+}
+
+.album-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--jf-border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  background: var(--jf-surface-alt);
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.track-item:hover {
+  background: #1e1e1e;
+  box-shadow: 0 1px 4px rgba(0, 164, 220, 0.15);
+}
+
+.track-item.selected {
+  background: rgba(0, 164, 220, 0.18);
+  border-color: var(--jf-accent);
+}
+
+.track-number {
+  font-size: 11px;
+  color: var(--jf-text-muted);
+  min-width: 20px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.track-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.track-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  font-weight: 500;
+}
+
+.track-artist {
+  font-size: 10px;
+  color: var(--jf-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-duration {
+  font-size: 10px;
+  color: #999;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 4px;
+}
+
 .season-select {
   margin-bottom: 8px;
 }
