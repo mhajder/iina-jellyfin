@@ -40,6 +40,44 @@ export default [
     },
   },
   {
+    // Main plugin runtime library files (CommonJS)
+    files: ['src/lib/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'script',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        global: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        iina: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^lastItemId$' }],
+      'no-useless-escape': 'off',
+      'no-console': 'off',
+      'prefer-const': 'error',
+      'no-var': 'error',
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'multi-line'],
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      strict: ['error', 'global'],
+      'no-shadow': 'error',
+      'no-redeclare': 'error',
+    },
+  },
+  {
     // UI/sidebar files
     files: ['src/ui/**/*.js'],
     languageOptions: {
