@@ -596,6 +596,14 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       document.getElementById('episodeSection').style.display = 'block';
       document.getElementById('mainContent').style.display = 'none';
 
+      // Clear stale episodes and reset state from any previously viewed series
+      document.getElementById('episodeList').innerHTML =
+        '<div class="loading">Select a season</div>';
+      this.selectedEpisode = null;
+      this.selectedSeason = null;
+      document.getElementById('playEpisodeBtn').disabled = true;
+      document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
+
       try {
         const params = new URLSearchParams({
           userId: this.currentUser.Id,
@@ -750,6 +758,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.selectedSeason = null;
       document.getElementById('playEpisodeBtn').disabled = true;
       document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
+      // Clear episode list and season dropdown so stale data isn't shown next time
+      document.getElementById('episodeList').innerHTML = '';
+      document.getElementById('seasonSelect').innerHTML = '';
     },
 
     openInJellyfin(item) {
