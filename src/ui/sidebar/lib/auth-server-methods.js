@@ -227,6 +227,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.currentServer = null;
       this.activeServerId = null;
       this.updateServerStatus('Not connected', '');
+      this.clearAllMediaContent();
       this.hideMainContent();
       this.showConnectButton();
       this.renderServerList();
@@ -238,6 +239,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.currentUser = null;
       this.currentServer = null;
       this.updateServerStatus('Not connected');
+      this.clearAllMediaContent();
       this.hideMainContent();
       this.showConnectButton();
       this.clearLoginForm();

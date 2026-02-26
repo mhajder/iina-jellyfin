@@ -50,6 +50,72 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.hideAlbumTracks();
     },
 
+    /**
+     * Clears all media content from the DOM and resets selection state.
+     * Called when disconnecting from a server or logging out to prevent
+     * stale content from a previous server being visible on reconnect.
+     */
+    clearAllMediaContent() {
+      // Reset selection state
+      this.selectedItem = null;
+      this.selectedSeason = null;
+      this.selectedEpisode = null;
+      this.selectedAlbum = null;
+      this.selectedTrack = null;
+      this.albumTracks = [];
+
+      // Clear media list containers
+      const listIds = [
+        'recentList',
+        'continueWatchingList',
+        'nextUpList',
+        'moviesList',
+        'seriesList',
+        'musicList',
+        'searchResults',
+      ];
+      for (const id of listIds) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+      }
+
+      // Clear search input
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) searchInput.value = '';
+
+      // Reset genre / filter selects to defaults
+      const selectIds = [
+        'moviesGenreSelect',
+        'seriesGenreSelect',
+        'musicGenreSelect',
+        'moviesSortSelect',
+        'seriesSortSelect',
+        'musicSortSelect',
+        'moviesFilterSelect',
+        'seriesFilterSelect',
+        'musicViewSelect',
+      ];
+      for (const id of selectIds) {
+        const el = document.getElementById(id);
+        if (el) el.selectedIndex = 0;
+      }
+
+      // Hide filter panels
+      const filterPanelIds = ['moviesFilterPanel', 'seriesFilterPanel', 'musicFilterPanel'];
+      for (const id of filterPanelIds) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      }
+
+      // Reset active tab to Home
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === 'home'));
+      tabContents.forEach((content) => content.classList.remove('active'));
+      const homeTab = document.getElementById('homeTab');
+      if (homeTab) homeTab.classList.add('active');
+    },
+
     scrollToTop() {
       window.scrollTo({ top: 0, behavior: 'instant' });
     },
