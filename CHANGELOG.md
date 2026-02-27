@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.0](https://github.com/mhajder/iina-jellyfin/compare/v0.5.0...v0.6.0) (2026-02-27)
+
+
+### 🚀 Features
+
+* add music library browsing and album track support ([#33](https://github.com/mhajder/iina-jellyfin/issues/33)) ([6bb0368](https://github.com/mhajder/iina-jellyfin/commit/6bb0368340f939956477d7e178a30d534ddc684a))
+* add pre-commit/prek configuration for code quality ([#36](https://github.com/mhajder/iina-jellyfin/issues/36)) ([d021c68](https://github.com/mhajder/iina-jellyfin/commit/d021c686cf76d3fc3aec4c6e7a9866f8e04130bf))
+* **sidebar:** add filter and sort controls for movies/series ([#26](https://github.com/mhajder/iina-jellyfin/issues/26)) ([fe8f4fc](https://github.com/mhajder/iina-jellyfin/commit/fe8f4fce977bb6031742789ea3b3493ccb6dfe9d))
+* **sidebar:** add search type filter chips for media search ([#31](https://github.com/mhajder/iina-jellyfin/issues/31)) ([6d8aab8](https://github.com/mhajder/iina-jellyfin/commit/6d8aab84c8197d1ad635c94b865173e6a98be24f))
+
+
+### 🐛 Bug Fixes
+
+* **sidebar:** clear media content and state on server disconnect/logout ([#34](https://github.com/mhajder/iina-jellyfin/issues/34)) ([c070eae](https://github.com/mhajder/iina-jellyfin/commit/c070eaee2f1504322eeb2f57eeafba1803ec2b6c))
+* **ui:** clear stale episode and season state on series change ([#32](https://github.com/mhajder/iina-jellyfin/issues/32)) ([0ab792d](https://github.com/mhajder/iina-jellyfin/commit/0ab792da59c1361bf6e4e8ca7619fe8d1ad6799d))
+
+
+### 🧹 Refactoring
+
+* **logging:** improve debug log clarity and structure ([#29](https://github.com/mhajder/iina-jellyfin/issues/29)) ([cf5fd88](https://github.com/mhajder/iina-jellyfin/commit/cf5fd88da107cff519ed8ab6a1d03025bc976185))
+* migrate inline styles to CSS file with theme vars ([#30](https://github.com/mhajder/iina-jellyfin/issues/30)) ([dbf543d](https://github.com/mhajder/iina-jellyfin/commit/dbf543df72fc83c954bca8aa55935839da684f06))
+* modularize plugin logic and improve sidebar ([#28](https://github.com/mhajder/iina-jellyfin/issues/28)) ([3e2533a](https://github.com/mhajder/iina-jellyfin/commit/3e2533ac155e8b1ba00544f9843db8b85fb34df8))
+
+
+### 🧩 CI
+
+* update client version using release please ([#35](https://github.com/mhajder/iina-jellyfin/issues/35)) ([3ced64a](https://github.com/mhajder/iina-jellyfin/commit/3ced64a403420b27ea66f47c4afb47eed3bf6ee0))
+
 ## [0.5.0](https://github.com/mhajder/iina-jellyfin/compare/v0.4.0...v0.5.0) (2026-02-11)
 
 
