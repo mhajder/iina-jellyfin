@@ -1,0 +1,54 @@
+fail_fast: false
+minimum_prek_version: '0.3.3'
+default_install_hook_types: [pre-push, commit-msg, pre-commit]
+exclude: |
+  (?x)^(
+    .release-please-manifest.json
+  )
+
+repos:
+  - repo: meta
+    hooks:
+      - id: identity
+        name: Print checked files
+        description: Print input to the static check hooks for troubleshooting
+      # - id: check-hooks-apply
+      #   name: Check if all hooks apply to the repository
+
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=100]
+
+  - repo: local
+    hooks:
+      - id: local-eslint
+        name: eslint
+        entry: pnpm eslint --fix
+        require_serial: true
+        language: unsupported
+        files: ^src/
+        types: [javascript]
+
+      - id: local-prettier
+        name: prettier
+        entry: pnpm prettier --write --ignore-unknown
+        require_serial: true
+        language: unsupported
+        types_or: [javascript, css, json, yaml, html, markdown]
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.10.0
+    hooks:
+      - id: commitizen
+      - id: commitizen-branch
+        stages:
+          - pre-push
