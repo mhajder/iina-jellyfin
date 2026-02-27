@@ -2,7 +2,7 @@
 
 const CLIENT_NAME = 'IINA Jellyfin Plugin';
 const DEVICE_NAME = 'IINA';
-const CLIENT_VERSION = '0.5.0'; // x-release-please-version
+const CLIENT_VERSION = '0.6.0'; // x-release-please-version
 
 function createJellyfinApi({ http, preferences, log }) {
   function getDeviceId() {
