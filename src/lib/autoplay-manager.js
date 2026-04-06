@@ -188,9 +188,13 @@ function createAutoplayManager({
 
       try {
         const playlistCount = Number(mpv.getNumber('playlist-count') || 0);
-        const currentPos = Number(mpv.getNumber('playlist-pos') || 0);
+        const currentPos = Number(mpv.getNumber('playlist-pos'));
 
-        if (playlistCount > currentPos + 1) {
+        if (!Number.isFinite(currentPos) || currentPos < 0) {
+          log(
+            `Skipping playlist cleanup due to invalid playlist-pos=${currentPos}, playlist-count=${playlistCount}`
+          );
+        } else if (playlistCount > currentPos + 1) {
           for (let i = playlistCount - 1; i > currentPos; i--) {
             try {
               mpv.command('playlist-remove', [String(i)]);
@@ -316,8 +320,10 @@ function createAutoplayManager({
     })();
   }
 
-  function resetForNewFile() {
-    lastProcessedEpisodeId = null;
+  function resetForNewFile(episodeId) {
+    if (!episodeId || lastProcessedEpisodeId !== episodeId) {
+      lastProcessedEpisodeId = null;
+    }
     autoplayQueued = false;
   }
 

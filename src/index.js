@@ -138,7 +138,7 @@ function onFileLoaded(fileUrl) {
     // Setup autoplay for TV episodes if enabled
     if (preferences.get('autoplay_next_episode')) {
       debugLog(`Setting up autoplay for episode (itemId): ${jellyfinInfo.itemId}`);
-      resetForNewFile();
+      resetForNewFile(jellyfinInfo.itemId);
       setupAutoplayForEpisode(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
     }
 
