@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/mhajder/iina-jellyfin/compare/v0.6.0...v0.6.1) (2026-04-06)
+
+
+### 🐛 Bug Fixes
+
+* ensure correct episode transitions ([#45](https://github.com/mhajder/iina-jellyfin/issues/45)) ([37fc964](https://github.com/mhajder/iina-jellyfin/commit/37fc9647c9ce473c24042af4af3c407b64fa7bee))
+
 ## [0.6.0](https://github.com/mhajder/iina-jellyfin/compare/v0.5.0...v0.6.0) (2026-02-27)
 
 
