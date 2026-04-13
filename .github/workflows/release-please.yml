@@ -117,7 +117,7 @@ jobs:
           name: iina-plugin
 
       - name: Update Release with Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: ${{ needs.build-plugin.outputs.asset_name }}
