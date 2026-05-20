@@ -389,20 +389,13 @@ function handlePlayMedia(message) {
         debugLog(`Could not clear playlist before opening: ${clearError.message}`);
       }
 
-      // Use mpv loadfile with force-media-title to set the title atomically
-      // This prevents the stale title bug where the old title persists until
-      // the async setVideoTitleFromMetadata call completes
+      // We use core.open instead of mpv.command('loadfile') because core.open
+      // properly triggers IINA's native lifecycle and sleep prevention checks.
+      // Set force-media-title BEFORE core.open so mpv uses it when loadfile runs.
       if (title) {
-        try {
-          mpv.command('loadfile', [streamUrl, 'replace', '-1', `force-media-title=${title}`]);
-        } catch (error) {
-          debugLog(`mpv loadfile with title failed: ${error.message}, falling back to core.open`);
-          isReplacingPlayback = false;
-          core.open(streamUrl);
-        }
-      } else {
-        core.open(streamUrl);
+        mpv.set('force-media-title', title);
       }
+      core.open(streamUrl);
     }
 
     debugLog('Successfully initiated media opening: ' + streamUrl);
