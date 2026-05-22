@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/mhajder/iina-jellyfin/compare/v0.6.1...v0.6.2) (2026-05-22)
+
+
+### 🐛 Bug Fixes
+
+* resolve macOS sleep prevention and stale title bugs during playback ([#56](https://github.com/mhajder/iina-jellyfin/issues/56)) ([7a8a8d8](https://github.com/mhajder/iina-jellyfin/commit/7a8a8d8c6360e0ddf7bde9a2473a8ac536f64b32))
+
 ## [0.6.1](https://github.com/mhajder/iina-jellyfin/compare/v0.6.0...v0.6.1) (2026-04-06)
 
 
