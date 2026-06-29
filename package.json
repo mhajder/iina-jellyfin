@@ -24,6 +24,6 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.0",
     "iina-plugin-definition": "^0.99.3",
-    "prettier": "^3.8.3"
+    "prettier": "^3.9.3"
   }
 }
