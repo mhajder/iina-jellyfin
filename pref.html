@@ -118,6 +118,20 @@
       </p>
     </div>
 
+    <div class="pref-section">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="use_connected_account" />
+        Report to my connected account (ignore link's API key)
+      </label>
+      <p class="small secondary pref-help">
+        When on, progress, resume and watched status are reported to the Jellyfin account you logged
+        into via the Jellyfin browser sidebar — instead of the account whose api_key is in the
+        playing URL. Ideal for Syncplay watch-togethers: everyone opens the same shared link, but
+        each viewer's progress records into their own account. Requires being logged in via the
+        sidebar; falls back to the URL's api_key if no account is connected.
+      </p>
+    </div>
+
     <div class="section-header">TV Series Playback</div>
 
     <div class="pref-section">

@@ -120,13 +120,35 @@ function onFileLoaded(fileUrl) {
 
   const jellyfinInfo = updateFromFileUrl(fileUrl);
   if (jellyfinInfo) {
-    // Store session data for auto-login if enabled
-    storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
+    // Decide which credentials playback reporting (progress/resume/watched)
+    // should use. By default it's the api_key embedded in the playing URL, so
+    // it records into whoever owns that key. When "use_connected_account" is on
+    // and a server is logged in via the Jellyfin browser sidebar, report to
+    // that account instead — the item id still comes from the URL, only the
+    // server + token change. This lets several people open the SAME shared link
+    // (e.g. over Syncplay) while each records progress into their own account.
+    let reportServerBase = jellyfinInfo.serverBase;
+    let reportApiKey = jellyfinInfo.apiKey;
+    if (preferences.get('use_connected_account')) {
+      const session = getStoredJellyfinSession();
+      if (session && session.accessToken) {
+        reportServerBase = session.serverUrl;
+        reportApiKey = session.accessToken;
+        debugLog(
+          `Connected-account mode: reporting as ${session.username || session.serverName} @ ${reportServerBase} (ignoring URL api_key)`
+        );
+      } else {
+        debugLog('Connected-account mode ON but no logged-in server; falling back to URL api_key');
+      }
+    } else {
+      // Default behaviour: remember this URL's session for auto-login.
+      storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
+    }
 
     // Start playback tracking for progress sync
     if (preferences.get('sync_playback_progress')) {
       debugLog(`Starting playback tracking for: ${jellyfinInfo.itemId}`);
-      startPlaybackTracking(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
+      startPlaybackTracking(reportServerBase, jellyfinInfo.itemId, reportApiKey);
     }
 
     // Set video title from metadata if enabled
