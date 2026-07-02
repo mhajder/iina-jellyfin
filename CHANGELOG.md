@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/mhajder/iina-jellyfin/compare/v0.6.2...v0.7.0) (2026-07-02)
+
+
+### 🚀 Features
+
+* report playback to the connected account instead of URL api_key ([#67](https://github.com/mhajder/iina-jellyfin/issues/67)) ([bf09128](https://github.com/mhajder/iina-jellyfin/commit/bf0912810d2dab73d508cf5c381986fef9681b30))
+
 ## [0.6.2](https://github.com/mhajder/iina-jellyfin/compare/v0.6.1...v0.6.2) (2026-05-22)
 
 
