@@ -31,7 +31,8 @@
     "open_in_new_window": true,
     "auto_login_enabled": true,
     "autoplay_next_episode": true,
-    "sync_playback_progress": true
+    "sync_playback_progress": true,
+    "use_connected_account": false
   },
   "ghRepo": "mhajder/iina-jellyfin",
   "ghVersion": 9
