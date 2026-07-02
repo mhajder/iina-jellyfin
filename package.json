@@ -23,7 +23,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.6.0",
-    "iina-plugin-definition": "^0.99.3",
+    "iina-plugin-definition": "^0.99.4",
     "prettier": "^3.9.4"
   }
 }
