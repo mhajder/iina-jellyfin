@@ -24,7 +24,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - uses: googleapis/release-please-action@v5
         id: release
@@ -80,7 +80,7 @@ jobs:
       asset_name: ${{ steps.pack.outputs.asset_name }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
