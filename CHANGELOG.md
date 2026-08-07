@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mhajder/iina-jellyfin/compare/v0.7.0...v0.7.1) (2026-08-07)
+
+
+### 🐛 Bug Fixes
+
+* remove deprecated sidebar permission ([#76](https://github.com/mhajder/iina-jellyfin/issues/76)) ([e2143c3](https://github.com/mhajder/iina-jellyfin/commit/e2143c3c5cc00e8c3143763b172a7c2fc4417bef))
+
 ## [0.7.0](https://github.com/mhajder/iina-jellyfin/compare/v0.6.2...v0.7.0) (2026-07-02)
 
 
