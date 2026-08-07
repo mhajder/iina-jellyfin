@@ -13,8 +13,7 @@
     "show-osd",
     "show-alert",
     "network-request",
-    "file-system",
-    "sidebar"
+    "file-system"
   ],
   "allowedDomains": [
     "*"
