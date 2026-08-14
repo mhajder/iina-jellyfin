@@ -612,7 +612,13 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         return;
       }
 
-      const normalizedUrl = this.normalizeServerUrl(serverUrl);
+      let normalizedUrl;
+      try {
+        normalizedUrl = this.normalizeServerUrl(serverUrl);
+      } catch (error) {
+        errorEl.textContent = error.message || 'Invalid server URL';
+        return;
+      }
       debugLog('Normalized URL: ' + normalizedUrl);
 
       try {
