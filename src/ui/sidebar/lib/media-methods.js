@@ -1,5 +1,25 @@
 window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) {
   return {
+    /**
+     * Take a ticket for a container before starting a request. Responses are
+     * rendered only while they hold the newest ticket, so a slow reply cannot
+     * overwrite fresher results (fast typing in search, flipping filters, ...).
+     */
+    nextRequestId(key) {
+      if (!this.requestIds) this.requestIds = {};
+      this.requestIds[key] = (this.requestIds[key] || 0) + 1;
+      return this.requestIds[key];
+    },
+
+    isLatestRequest(key, requestId) {
+      const current = this.requestIds ? this.requestIds[key] : undefined;
+      if (current !== requestId) {
+        debugLog(`Dropping stale ${key} response (#${requestId}, current #${current})`);
+        return false;
+      }
+      return true;
+    },
+
     showMainContent() {
       document.getElementById('mainContent').style.display = 'block';
       this.scrollToTop();
@@ -131,6 +151,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       debugLog('Loading recent items for user:', this.currentUser.Name);
       const recentList = document.getElementById('recentList');
       recentList.innerHTML = '<div class="loading">Loading recent items...</div>';
+      const requestId = this.nextRequestId('recent');
 
       try {
         const params = new URLSearchParams({
@@ -156,6 +177,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         debugLog('Response data type:', typeof response.data);
         debugLog('Response data is array:', Array.isArray(response.data));
 
+        if (!this.isLatestRequest('recent', requestId)) return;
+
         if (response.data && Array.isArray(response.data)) {
           this.renderMediaList(response.data, recentList);
         } else {
@@ -163,6 +186,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading recent items:', error);
+        if (!this.isLatestRequest('recent', requestId)) return;
         recentList.innerHTML = '<div class="error">Failed to load recent items</div>';
       }
     },
@@ -179,6 +203,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('continueWatchingList');
       container.innerHTML = '<div class="loading">Loading...</div>';
+      const requestId = this.nextRequestId('continueWatching');
 
       try {
         const params = new URLSearchParams({
@@ -196,6 +221,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('continueWatching', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMediaList(response.data.Items, container);
         } else {
@@ -203,6 +230,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading continue watching:', error);
+        if (!this.isLatestRequest('continueWatching', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load</div>';
       }
     },
@@ -212,6 +240,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('nextUpList');
       container.innerHTML = '<div class="loading">Loading...</div>';
+      const requestId = this.nextRequestId('nextUp');
 
       try {
         const params = new URLSearchParams({
@@ -229,6 +258,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('nextUp', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMediaList(response.data.Items, container);
         } else {
@@ -236,6 +267,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading next up:', error);
+        if (!this.isLatestRequest('nextUp', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load</div>';
       }
     },
@@ -245,6 +277,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('moviesList');
       container.innerHTML = '<div class="loading">Loading movies...</div>';
+      const requestId = this.nextRequestId('movies');
 
       try {
         const sortValue = document.getElementById('moviesSortSelect').value.split(',');
@@ -280,6 +313,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('movies', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMediaList(response.data.Items, container);
         } else {
@@ -287,6 +322,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading movies:', error);
+        if (!this.isLatestRequest('movies', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load movies</div>';
       }
     },
@@ -296,6 +332,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('seriesList');
       container.innerHTML = '<div class="loading">Loading series...</div>';
+      const requestId = this.nextRequestId('series');
 
       try {
         const sortValue = document.getElementById('seriesSortSelect').value.split(',');
@@ -331,6 +368,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('series', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMediaList(response.data.Items, container);
         } else {
@@ -338,6 +377,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading series:', error);
+        if (!this.isLatestRequest('series', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load series</div>';
       }
     },
@@ -374,6 +414,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
 
       searchResults.innerHTML = '<div class="loading">Searching...</div>';
+      const requestId = this.nextRequestId('search');
 
       try {
         const params = new URLSearchParams({
@@ -391,6 +432,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('search', requestId)) return;
+
         if (response.data && response.data.SearchHints) {
           this.renderSearchResults(response.data.SearchHints, searchResults);
         } else {
@@ -398,6 +441,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Search error:', error);
+        if (!this.isLatestRequest('search', requestId)) return;
         searchResults.innerHTML = '<div class="error">Search failed</div>';
       }
     },
@@ -725,6 +769,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const episodeList = document.getElementById('episodeList');
       episodeList.innerHTML = '<div class="loading">Loading episodes...</div>';
+      const requestId = this.nextRequestId('episodes');
 
       try {
         const params = new URLSearchParams({
@@ -742,6 +787,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             },
           }
         );
+
+        if (!this.isLatestRequest('episodes', requestId)) return;
 
         if (response.data && response.data.Items) {
           episodeList.innerHTML = '';
@@ -808,6 +855,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading episodes:', error);
+        if (!this.isLatestRequest('episodes', requestId)) return;
         episodeList.innerHTML = '<div class="error">Failed to load episodes</div>';
       }
     },
@@ -935,6 +983,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('musicList');
       container.innerHTML = '<div class="loading">Loading music...</div>';
+      const requestId = this.nextRequestId('music');
 
       try {
         const viewMode = document.getElementById('musicViewSelect').value;
@@ -942,19 +991,20 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         const genreValue = document.getElementById('musicGenreSelect').value;
 
         if (viewMode === 'artists') {
-          await this.loadMusicArtists(container, sortValue, genreValue);
+          await this.loadMusicArtists(container, sortValue, genreValue, requestId);
         } else if (viewMode === 'songs') {
-          await this.loadMusicSongs(container, sortValue, genreValue);
+          await this.loadMusicSongs(container, sortValue, genreValue, requestId);
         } else {
-          await this.loadMusicAlbums(container, sortValue, genreValue);
+          await this.loadMusicAlbums(container, sortValue, genreValue, requestId);
         }
       } catch (error) {
         debugLog('Error loading music:', error);
+        if (!this.isLatestRequest('music', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load music</div>';
       }
     },
 
-    async loadMusicAlbums(container, sortValue, genreValue) {
+    async loadMusicAlbums(container, sortValue, genreValue, requestId) {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         IncludeItemTypes: 'MusicAlbum',
@@ -979,6 +1029,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         },
       });
 
+      if (!this.isLatestRequest('music', requestId)) return;
+
       if (response.data && response.data.Items && response.data.Items.length > 0) {
         this.renderMusicList(response.data.Items, container, 'album');
       } else {
@@ -986,7 +1038,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
     },
 
-    async loadMusicArtists(container, sortValue, genreValue) {
+    async loadMusicArtists(container, sortValue, genreValue, requestId) {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         SortBy: sortValue[0],
@@ -1008,6 +1060,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         },
       });
 
+      if (!this.isLatestRequest('music', requestId)) return;
+
       if (response.data && response.data.Items && response.data.Items.length > 0) {
         this.renderMusicList(response.data.Items, container, 'artist');
       } else {
@@ -1015,7 +1069,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
     },
 
-    async loadMusicSongs(container, sortValue, genreValue) {
+    async loadMusicSongs(container, sortValue, genreValue, requestId) {
       const params = new URLSearchParams({
         userId: this.currentUser.Id,
         IncludeItemTypes: 'Audio',
@@ -1038,6 +1092,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           'X-Emby-Token': this.currentServer.accessToken,
         },
       });
+
+      if (!this.isLatestRequest('music', requestId)) return;
 
       if (response.data && response.data.Items && response.data.Items.length > 0) {
         this.renderMusicList(response.data.Items, container, 'song');
@@ -1209,6 +1265,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const container = document.getElementById('musicList');
       container.innerHTML = '<div class="loading">Loading albums...</div>';
+      const requestId = this.nextRequestId('music');
 
       try {
         const params = new URLSearchParams({
@@ -1231,6 +1288,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('music', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMusicList(response.data.Items, container, 'album');
         } else {
@@ -1238,6 +1297,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading artist albums:', error);
+        if (!this.isLatestRequest('music', requestId)) return;
         container.innerHTML = '<div class="error">Failed to load albums</div>';
       }
     },
@@ -1257,6 +1317,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const tracksList = document.getElementById('albumTracksList');
       tracksList.innerHTML = '<div class="loading">Loading tracks...</div>';
+      const requestId = this.nextRequestId('albumTracks');
 
       try {
         const params = new URLSearchParams({
@@ -1276,6 +1337,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           },
         });
 
+        if (!this.isLatestRequest('albumTracks', requestId)) return;
+
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.albumTracks = response.data.Items;
           this.renderAlbumTracks(response.data.Items, tracksList);
@@ -1285,6 +1348,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         }
       } catch (error) {
         debugLog('Error loading album tracks:', error);
+        if (!this.isLatestRequest('albumTracks', requestId)) return;
         tracksList.innerHTML = '<div class="error">Failed to load tracks</div>';
       }
     },
