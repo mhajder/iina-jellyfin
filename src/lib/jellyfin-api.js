@@ -69,16 +69,19 @@ function createJellyfinApi({ http, preferences, log }) {
 
       const protocol = protocolMatch[1];
       const host = protocolMatch[2];
-      const serverBase = `${protocol}://${host}`;
-
-      log(`Extracted serverBase: ${serverBase}`);
 
       const urlParts = url.split('?');
-      const pathname = urlParts[0].replace(/^https?:\/\/[^/]+/, '');
       const queryString = urlParts[1] || '';
 
+      // Everything before the media route is the server, not just the host: a
+      // Jellyfin behind a reverse proxy subpath (https://example.com/jellyfin)
+      // would otherwise have every later API call sent to the bare domain.
+      const baseMatch = urlParts[0].match(/^(https?:\/\/[^/]+.*?)\/(?:Items|Videos|Audio)\//i);
+      const serverBase = baseMatch ? baseMatch[1] : `${protocol}://${host}`;
+      const pathname = urlParts[0].slice(serverBase.length);
+
+      log(`Extracted serverBase: ${serverBase}`);
       log(`Extracted pathname: ${pathname}`);
-      log(`Extracted queryString: ${queryString}`);
 
       // Playback uses the streaming routes (/Videos/{id}/stream,
       // /Audio/{id}/stream); /Items/{id}/... is still accepted so links made by
@@ -95,7 +98,11 @@ function createJellyfinApi({ http, preferences, log }) {
 
       let apiKey = null;
       if (queryString) {
-        const apiKeyMatch = queryString.match(/(?:^|&)api_key=([^&]+)/);
+        // Jellyfin binds query parameters case-insensitively, so links made by
+        // other tools may spell the token differently.
+        const apiKeyMatch = queryString.match(
+          /(?:^|&)(?:api_key|apikey|api-key|x-emby-token)=([^&]+)/i
+        );
         if (apiKeyMatch) {
           apiKey = decodeURIComponent(apiKeyMatch[1]);
         }
@@ -131,7 +138,7 @@ function createJellyfinApi({ http, preferences, log }) {
     }
 
     return (
-      (url.includes('/Items/') && url.includes('api_key=')) ||
+      (url.includes('/Items/') && /[?&](?:api_key|apikey|api-key|x-emby-token)=/i.test(url)) ||
       url.includes('jellyfin') ||
       url.includes('/Audio/') ||
       url.includes('/Videos/')
