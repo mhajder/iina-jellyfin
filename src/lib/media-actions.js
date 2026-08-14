@@ -73,38 +73,20 @@ function createMediaActionsManager({
     }
   }
 
-  async function downloadSubtitle(serverBase, itemId, streamIndex, apiKey, language, codec) {
-    try {
-      const subtitleUrl = `${serverBase}/Videos/${itemId}/${streamIndex}/Subtitles.${codec}?api_key=${apiKey}`;
-      const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const sanitizedCodec = String(codec).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const fileName = `jellyfin_${sanitizedItemId}_${streamIndex}_${sanitizedLanguage}.${sanitizedCodec}`;
-      const localPath = `@tmp/${fileName}`;
-
-      log(`Downloading subtitle: ${subtitleUrl}`);
-
-      await http.download(subtitleUrl, localPath);
-
-      const resolvedPath = utils.resolvePath(localPath);
-      core.subtitle.loadTrack(resolvedPath);
-
-      log(`Subtitle loaded: ${resolvedPath}`);
-
-      if (preferences.get('show_notifications')) {
-        core.osd(`Loaded ${language} subtitle`);
-      }
-
-      return true;
-    } catch (error) {
-      log(`Error downloading subtitle: ${error.message}`);
-      return false;
-    }
+  function subtitleExtensionForCodec(codec) {
+    if (codec === 'subrip') return 'srt';
+    if (codec === 'webvtt' || codec === 'vtt') return 'vtt';
+    if (codec === 'ass') return 'ass';
+    if (codec === 'ssa') return 'ssa';
+    if (codec && codec.toLowerCase().includes('srt')) return 'srt';
+    if (codec && codec.toLowerCase().includes('vtt')) return 'vtt';
+    return 'srt';
   }
 
   async function downloadExternalSubtitle(
     serverBase,
     itemId,
+    mediaSourceId,
     streamIndex,
     subtitlePath,
     apiKey,
@@ -112,16 +94,9 @@ function createMediaActionsManager({
     codec
   ) {
     try {
-      let extension = 'srt';
-      if (codec === 'subrip') extension = 'srt';
-      else if (codec === 'webvtt') extension = 'vtt';
-      else if (codec === 'ass') extension = 'ass';
-      else if (codec === 'ssa') extension = 'ssa';
-      else if (codec === 'vtt') extension = 'vtt';
-      else if (codec && codec.toLowerCase().includes('srt')) extension = 'srt';
-      else if (codec && codec.toLowerCase().includes('vtt')) extension = 'vtt';
+      const extension = subtitleExtensionForCodec(codec);
 
-      const subtitleUrl = `${serverBase}/Videos/${itemId}/${itemId}/Subtitles/${streamIndex}/stream.${extension}?api_key=${apiKey}`;
+      const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?api_key=${apiKey}`;
 
       let fileName;
       if (subtitlePath) {
@@ -175,11 +150,18 @@ function createMediaActionsManager({
       const mediaSource = playbackInfo.MediaSources[0];
       const mediaStreams = mediaSource.MediaStreams || [];
 
+      // External sidecar files only. Embedded tracks would have to be extracted
+      // by the server on demand, which takes minutes for large remuxes, and
+      // mpv already exposes them from the file itself.
       const subtitleStreams = mediaStreams.filter(
-        (stream) => stream.Type === 'Subtitle' && stream.IsTextSubtitleStream
+        (stream) =>
+          stream.Type === 'Subtitle' &&
+          stream.IsTextSubtitleStream &&
+          stream.IsExternal &&
+          stream.Path
       );
 
-      log(`Found ${subtitleStreams.length} subtitle streams`);
+      log(`Found ${subtitleStreams.length} external subtitle stream(s)`);
 
       const preferredLanguages = (preferences.get('preferred_languages') || 'en,eng')
         .split(',')
@@ -205,25 +187,22 @@ function createMediaActionsManager({
           continue;
         }
 
-        log(
-          `Processing subtitle: ${language} (${codec}) - Index: ${stream.Index}, External: ${stream.IsExternal}`
-        );
+        log(`Processing external subtitle: ${language} (${codec}) - Index: ${stream.Index}`);
 
         try {
-          if (stream.IsExternal && stream.Path) {
-            await downloadExternalSubtitle(
-              serverBase,
-              itemId,
-              stream.Index,
-              stream.Path,
-              apiKey,
-              language,
-              codec
-            );
-          } else {
-            await downloadSubtitle(serverBase, itemId, stream.Index, apiKey, language, codec);
+          const downloaded = await downloadExternalSubtitle(
+            serverBase,
+            itemId,
+            mediaSource.Id,
+            stream.Index,
+            stream.Path,
+            apiKey,
+            language,
+            codec
+          );
+          if (downloaded) {
+            downloadedCount++;
           }
-          downloadedCount++;
         } catch (error) {
           log(`Failed to download subtitle ${language}: ${error.message}`);
         }
@@ -232,9 +211,9 @@ function createMediaActionsManager({
       if (downloadedCount > 0 && preferences.get('show_notifications')) {
         core.osd(`Downloaded ${downloadedCount} subtitle(s)`);
       } else if (downloadedCount === 0) {
-        log('No subtitles downloaded');
+        log('No external subtitles downloaded');
         if (preferences.get('show_notifications')) {
-          core.osd('No matching subtitles found');
+          core.osd('No matching external subtitles found');
         }
       }
     } catch (error) {
