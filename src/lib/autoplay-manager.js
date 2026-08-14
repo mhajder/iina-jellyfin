@@ -81,7 +81,9 @@ function createAutoplayManager({
       const seriesId = metadata.SeriesId;
       const seasonId = metadata.SeasonId;
       const seriesName = metadata.SeriesName || '';
-      const seasonNumber = Number(metadata.ParentIndexNumber) || 1;
+      // Specials are season 0, so a plain || 1 would relabel them as season 1
+      const parsedSeasonNumber = Number(metadata.ParentIndexNumber ?? 1);
+      const seasonNumber = Number.isFinite(parsedSeasonNumber) ? parsedSeasonNumber : 1;
       const episodeIndexNumber = Number(metadata.IndexNumber) || 0;
 
       if (!seriesId || !seasonId) {
