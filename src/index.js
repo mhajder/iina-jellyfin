@@ -178,25 +178,27 @@ function onFileLoaded(fileUrl) {
  * Show Jellyfin Browser - handles the case when no window is available
  */
 function showJellyfinBrowser() {
-  try {
-    debugLog('Attempting to show Jellyfin browser');
+  debugLog('Attempting to show Jellyfin browser');
 
-    // Try to show sidebar directly first
-    if (sidebar && sidebar.show) {
+  // Try to show sidebar directly first
+  if (sidebar && typeof sidebar.show === 'function') {
+    try {
       sidebar.show();
       debugLog('Sidebar shown successfully');
       return;
+    } catch (error) {
+      debugLog(`Direct sidebar.show() failed: ${error.message}`);
     }
-  } catch (error) {
-    debugLog(`Direct sidebar.show() failed: ${error.message}`);
-
-    // Check if we have stored session data that could be useful
-    const sessionData = getStoredJellyfinSession();
-
-    // Always open in standalone window when sidebar isn't available
-    debugLog('Opening Jellyfin browser in standalone window');
-    openJellyfinStandaloneWindow(sessionData);
+  } else {
+    debugLog('Sidebar API unavailable');
   }
+
+  // Sidebar missing or threw — fall back to a standalone window.
+  // Check if we have stored session data that could be useful.
+  const sessionData = getStoredJellyfinSession();
+
+  debugLog('Opening Jellyfin browser in standalone window');
+  openJellyfinStandaloneWindow(sessionData);
 }
 
 /**
