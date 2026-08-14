@@ -296,12 +296,19 @@ class JellyfinSidebar {
       this.hideAlbumTracks();
     });
 
-    // Enter key handling
-    document.getElementById('password').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        this.login();
-      }
-    });
+    // Enter submits from any field of the form it belongs to
+    const submitOnEnter = (id, submit) => {
+      const field = document.getElementById(id);
+      if (!field) return;
+      field.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          submit();
+        }
+      });
+    };
+
+    ['serverUrl', 'username', 'password'].forEach((id) => submitOnEnter(id, () => this.login()));
+    submitOnEnter('qcServerUrl', () => this.startQuickConnect());
   }
 
   setupTabNavigation() {
@@ -398,20 +405,24 @@ class JellyfinSidebar {
 Object.assign(JellyfinSidebar.prototype, window.createSidebarAuthServerMethods(debugLog));
 Object.assign(JellyfinSidebar.prototype, window.createSidebarMediaMethods(debugLog));
 
-// Initialize sidebar when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-  debugLog('DOM loaded, initializing Jellyfin sidebar');
-  window.jellyfinSidebar = new JellyfinSidebar();
-  debugLog('Jellyfin sidebar initialized');
-});
-
 // Expose for main plugin communication
 window.JellyfinSidebar = JellyfinSidebar;
 
-// Also try to initialize immediately if DOM is already loaded
+// Constructing twice would attach a second set of DOM listeners, so make
+// initialization idempotent rather than relying on which branch runs.
+function initJellyfinSidebar() {
+  if (window.jellyfinSidebar) {
+    debugLog('Jellyfin sidebar already initialized');
+    return;
+  }
+  window.jellyfinSidebar = new JellyfinSidebar();
+  debugLog('Jellyfin sidebar initialized');
+}
+
 if (document.readyState === 'loading') {
   debugLog('DOM still loading, waiting for DOMContentLoaded');
+  document.addEventListener('DOMContentLoaded', initJellyfinSidebar);
 } else {
   debugLog('DOM already loaded, initializing immediately');
-  window.jellyfinSidebar = new JellyfinSidebar();
+  initJellyfinSidebar();
 }
