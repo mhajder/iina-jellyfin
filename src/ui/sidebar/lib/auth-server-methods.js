@@ -309,17 +309,6 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.clearLoginForm();
     },
 
-    logout() {
-      debugLog('Logging out user');
-      this.currentUser = null;
-      this.currentServer = null;
-      this.updateServerStatus('Not connected');
-      this.clearAllMediaContent();
-      this.hideMainContent();
-      this.showConnectButton();
-      this.clearLoginForm();
-    },
-
     updateServerStatus(message, status = '') {
       const statusEl = document.getElementById('serverStatus');
       statusEl.textContent = message;

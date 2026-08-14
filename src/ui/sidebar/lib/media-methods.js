@@ -1476,18 +1476,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             this.hideEpisodeSelection();
           }
         } else {
-          debugLog('iina.postMessage not available, trying global object');
-          if (typeof window !== 'undefined' && window.jellyfinPlugin) {
-            debugLog('Using window.jellyfinPlugin for communication');
-            if (window.jellyfinPlugin.playMedia) {
-              window.jellyfinPlugin.playMedia(streamUrl, item.Name || 'Unknown Title');
-            } else {
-              debugLog('window.jellyfinPlugin.playMedia not available');
-            }
-          } else {
-            debugLog('No communication method available, opening in new window');
-            window.open(streamUrl, '_blank');
-          }
+          debugLog('iina.postMessage not available, opening in a new window');
+          window.open(streamUrl, '_blank');
         }
       } catch (error) {
         debugLog('Error playing media:', error);
