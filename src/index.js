@@ -24,7 +24,32 @@ const {
   playlist,
 } = iina;
 
-let isReplacingPlayback = false; // Guard to prevent spurious stop reports during file switch
+// Guard to prevent spurious stop reports during a file switch. Stored as a
+// timestamp and expired after REPLACEMENT_GUARD_MS: if the expected end-file
+// never arrives (e.g. core.open failed), a stale guard must not swallow the
+// stop report of the next file that really does finish.
+let replacingPlaybackAt = 0;
+const REPLACEMENT_GUARD_MS = 10000;
+
+function markReplacingPlayback() {
+  replacingPlaybackAt = Date.now();
+}
+
+function consumeReplacementGuard() {
+  if (!replacingPlaybackAt) {
+    return false;
+  }
+
+  const age = Date.now() - replacingPlaybackAt;
+  replacingPlaybackAt = 0;
+
+  if (age > REPLACEMENT_GUARD_MS) {
+    debugLog(`Ignoring replacement guard set ${age}ms ago (expired)`);
+    return false;
+  }
+
+  return true;
+}
 
 const debugLog = createDebugLogger(preferences, console);
 
@@ -385,7 +410,7 @@ function openInCurrentWindow(streamUrl, title) {
 
   // Set replacement guard so end-file handler doesn't send spurious stop
   if (getCurrentPlaybackSession()) {
-    isReplacingPlayback = true;
+    markReplacingPlayback();
   }
 
   // Clear any previous playlist entries to prevent stale titles
@@ -511,6 +536,7 @@ event.on('mpv.pause.changed', handlePauseChange);
 // Handle file ending (includes both natural end and replacement)
 event.on('mpv.end-file', () => {
   const queuedForAutoplay = isQueued();
+  const isReplacingPlayback = consumeReplacementGuard();
   debugLog(
     'mpv.end-file triggered, isReplacingPlayback=' +
       isReplacingPlayback +
@@ -520,7 +546,6 @@ event.on('mpv.end-file', () => {
   if (isReplacingPlayback) {
     // File is being replaced (e.g. episode transition) — don't send stop report
     debugLog('File replacement in progress, skipping stop report');
-    isReplacingPlayback = false;
     return;
   }
   if (queuedForAutoplay) {
