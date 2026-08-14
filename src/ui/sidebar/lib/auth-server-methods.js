@@ -52,8 +52,10 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           const activeServer =
             validServers.find((server) => server.id === this.activeServerId) || validServers[0];
           this.connectToServer(activeServer);
+          // Only an attempted connection counts as done. An empty list simply
+          // means the plugin has not sent the servers yet.
+          this.initialAutoConnectDone = true;
         }
-        this.initialAutoConnectDone = true;
       }
     },
 
