@@ -25,11 +25,24 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
       // Sessions taken from a played URL have no userId until the sidebar
       // connects and reads /Users/Me, so requiring one here deleted them on the
       // very next read and auto-login from URLs never survived.
-      const validServers = servers.filter(
+      const usableServers = servers.filter(
         (server) => server && server.serverUrl && server.accessToken
       );
+
+      // Drop an unverified URL session for a server that is also signed in:
+      // the account entry supersedes it, and keeping both shows the server
+      // twice in the list.
+      const signedInUrls = new Set(
+        usableServers
+          .filter((server) => server.userId)
+          .map((server) => server.serverUrl.replace(/\/$/, ''))
+      );
+      const validServers = usableServers.filter(
+        (server) => server.userId || !signedInUrls.has(server.serverUrl.replace(/\/$/, ''))
+      );
+
       if (validServers.length !== servers.length) {
-        log(`Cleaned ${servers.length - validServers.length} incomplete server entries`);
+        log(`Cleaned ${servers.length - validServers.length} redundant server entries`);
         saveStoredServers(validServers);
       }
       return validServers;
@@ -156,6 +169,26 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
 
   function storeJellyfinSession(serverBase, apiKey) {
     try {
+      const normalizedUrl = String(serverBase || '').replace(/\/$/, '');
+
+      // If this server is already signed in, its account credentials are the
+      // better ones and storing the URL's api_key next to them would leave two
+      // entries for the same server in the list.
+      const signedIn = loadStoredServers().find(
+        (server) => server.userId && server.serverUrl.replace(/\/$/, '') === normalizedUrl
+      );
+      if (signedIn) {
+        log(
+          `Server ${normalizedUrl} is already signed in as ${signedIn.username || signedIn.userId}`
+        );
+        notifyViews('session-available', {
+          serverUrl: signedIn.serverUrl,
+          accessToken: signedIn.accessToken,
+          serverId: signedIn.id,
+        });
+        return;
+      }
+
       log(`Storing Jellyfin session data for: ${serverBase}`);
 
       const server = addOrUpdateServer({
