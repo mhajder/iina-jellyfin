@@ -1,6 +1,19 @@
 'use strict';
 
-function createServerSessionStore({ preferences, sidebar, log }) {
+function createServerSessionStore({ preferences, sidebar, standaloneWindow, log }) {
+  /**
+   * Both browser surfaces show the same server list, and either can be the one
+   * the user is acting in, so state changes go to both. Posting to a webview
+   * that was never created is a no-op inside IINA.
+   */
+  function notifyViews(name, data) {
+    for (const view of [sidebar, standaloneWindow]) {
+      if (view && typeof view.postMessage === 'function') {
+        view.postMessage(name, data);
+      }
+    }
+  }
+
   function loadStoredServers() {
     try {
       const serversJson = preferences.get('jellyfin_servers');
@@ -110,9 +123,7 @@ function createServerSessionStore({ preferences, sidebar, log }) {
 
       log(`Removed server: ${serverId}`);
 
-      if (sidebar && sidebar.postMessage) {
-        sidebar.postMessage('servers-updated', { servers, activeServerId: getActiveServerId() });
-      }
+      notifyViews('servers-updated', { servers, activeServerId: getActiveServerId() });
     } catch (error) {
       log(`Error removing server: ${error.message}`);
     }
@@ -139,13 +150,7 @@ function createServerSessionStore({ preferences, sidebar, log }) {
       setActiveServerId(serverId);
       log(`Switched active server to: ${server.serverName}`);
 
-      if (sidebar && sidebar.postMessage) {
-        sidebar.postMessage('server-switched', {
-          server,
-          servers,
-          activeServerId: serverId,
-        });
-      }
+      notifyViews('server-switched', { server, servers, activeServerId: serverId });
     }
   }
 
@@ -159,13 +164,11 @@ function createServerSessionStore({ preferences, sidebar, log }) {
       });
 
       if (server) {
-        if (sidebar && sidebar.postMessage) {
-          sidebar.postMessage('session-available', {
-            serverUrl: server.serverUrl,
-            accessToken: server.accessToken,
-            serverId: server.id,
-          });
-        }
+        notifyViews('session-available', {
+          serverUrl: server.serverUrl,
+          accessToken: server.accessToken,
+          serverId: server.id,
+        });
       }
     } catch (error) {
       log(`Error storing Jellyfin session: ${error.message}`);
@@ -178,9 +181,7 @@ function createServerSessionStore({ preferences, sidebar, log }) {
       saveStoredServers([]);
       setActiveServerId(null);
 
-      if (sidebar && sidebar.postMessage) {
-        sidebar.postMessage('session-cleared', {});
-      }
+      notifyViews('session-cleared', {});
     } catch (error) {
       log(`Error clearing Jellyfin session: ${error.message}`);
     }

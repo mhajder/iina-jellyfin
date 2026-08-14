@@ -123,12 +123,18 @@ function createJellyfinApi({ http, preferences, log }) {
   }
 
   function isJellyfinUrl(url) {
+    // Only remote URLs can be Jellyfin. Without this a local file such as
+    // /Users/me/Videos/movie.mp4 matches on "/Videos/" and every playback
+    // triggers metadata lookups that cannot succeed.
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return false;
+    }
+
     return (
-      url &&
-      ((url.includes('/Items/') && url.includes('api_key=')) ||
-        url.includes('jellyfin') ||
-        url.includes('/Audio/') ||
-        url.includes('/Videos/'))
+      (url.includes('/Items/') && url.includes('api_key=')) ||
+      url.includes('jellyfin') ||
+      url.includes('/Audio/') ||
+      url.includes('/Videos/')
     );
   }
 
