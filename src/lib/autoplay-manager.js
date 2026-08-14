@@ -227,30 +227,6 @@ function createAutoplayManager({
     }
   }
 
-  function storeCurrentEpisodeInfo(episodeId, seriesInfo) {
-    try {
-      if (!seriesInfo) {
-        log('Series info is null, clearing stored episode info');
-        preferences.set('last_episode_id', '');
-        preferences.set('last_series_id', '');
-        preferences.set('last_season_id', '');
-        preferences.set('last_episode_number', 0);
-        return;
-      }
-
-      log(
-        `Storing episode info for autoplay - Episode: ${episodeId}, Series: ${seriesInfo.seriesId}`
-      );
-      preferences.set('last_episode_id', episodeId);
-      preferences.set('last_series_id', seriesInfo.seriesId);
-      preferences.set('last_season_id', seriesInfo.seasonId);
-      preferences.set('last_episode_number', seriesInfo.currentEpisodeNumber);
-      preferences.sync();
-    } catch (error) {
-      log(`Error storing episode info: ${error.message}`);
-    }
-  }
-
   function setupAutoplayForEpisode(serverBase, episodeId, apiKey) {
     if (lastProcessedEpisodeId === episodeId) {
       log(`Episode ${episodeId} already being processed, skipping duplicate setup`);
@@ -289,8 +265,6 @@ function createAutoplayManager({
           log(`Series changed from ${lastProcessedSeriesId} to ${seriesInfo.seriesId}`);
           lastProcessedSeriesId = seriesInfo.seriesId;
         }
-
-        storeCurrentEpisodeInfo(episodeId, seriesInfo);
 
         const nextEpisode = await resolveNextEpisode(
           serverBase,
