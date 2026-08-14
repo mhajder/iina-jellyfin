@@ -956,19 +956,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           return false;
         }
 
-        const hasValidPath = episode.MediaSources.some((source) => {
-          return source.Path && source.Path.trim() !== '';
-        });
-
-        if (!hasValidPath) {
-          debugLog(`Episode ${episode.Name} has no valid media paths`);
-          return false;
-        }
-
-        if (!episode.Path || episode.Path.trim() === '') {
-          debugLog(`Episode ${episode.Name} has no direct path`);
-          return false;
-        }
+        // Filesystem paths are deliberately not checked: Jellyfin withholds
+        // Path from non-admin accounts, and an episode that is playable by
+        // streaming does not need one. LocationType and MediaSources already
+        // say whether the file exists on the server, which is the same test
+        // the autoplay manager uses.
 
         if (episode.IsFolder === true) {
           debugLog(`Episode ${episode.Name} marked as folder`);
