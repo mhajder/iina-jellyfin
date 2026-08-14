@@ -531,21 +531,8 @@ function handlePlayMedia(message) {
     debugLog('Error opening media: ' + error);
     core.osd('Failed to open media');
 
-    // Fallback: copy to clipboard as backup
-    try {
-      if (typeof core !== 'undefined' && core.setClipboard) {
-        core.setClipboard(streamUrl);
-        core.osd('Error opening - URL copied to clipboard');
-      } else if (typeof utils !== 'undefined' && utils.setClipboard) {
-        utils.setClipboard(streamUrl);
-        core.osd('Error opening - URL copied to clipboard');
-      } else {
-        core.osd('Failed to open - check console for URL');
-      }
-    } catch (clipboardError) {
-      debugLog('Both open and clipboard failed: ' + clipboardError);
-      core.osd('Failed to open media - check console');
-    }
+    // No clipboard API is exposed to plugins, so the URL only goes to the log
+    debugLog(`URL that failed to open: ${streamUrl}`);
   }
 }
 
