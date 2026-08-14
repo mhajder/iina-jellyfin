@@ -153,6 +153,9 @@ function isSameJellyfinHost(left, right) {
 function onFileLoaded(fileUrl) {
   debugLog(`File loaded: ${fileUrl}`);
 
+  // The first item of a queued list is playing now, so the rest can be added
+  flushPendingPlaylistQueue(fileUrl);
+
   // Stop any existing playback tracking from previous file
   stopPlaybackTracking();
 
@@ -469,6 +472,50 @@ function openInCurrentWindow(streamUrl, title) {
   core.open(streamUrl);
 }
 
+// Items waiting to join the playlist behind the one currently being opened.
+let pendingPlaylistQueue = null;
+const PENDING_QUEUE_TTL_MS = 60000;
+
+/**
+ * Append the items held back by handlePlayMediaList. Called once the first item
+ * of the list has actually loaded, so mpv's replacing load cannot discard them.
+ */
+function flushPendingPlaylistQueue(fileUrl) {
+  if (!pendingPlaylistQueue) {
+    return;
+  }
+
+  const { items, at, itemId } = pendingPlaylistQueue;
+  pendingPlaylistQueue = null;
+
+  if (Date.now() - at > PENDING_QUEUE_TTL_MS) {
+    debugLog('Queued playlist items are stale, not appending them');
+    return;
+  }
+
+  // Make sure this is the file the list started with. IINA percent-encodes the
+  // URL, so compare on the item id rather than the whole string.
+  if (itemId && fileUrl && !String(fileUrl).includes(itemId)) {
+    debugLog(`Loaded file is not the queued list's first item (${itemId}), dropping the queue`);
+    return;
+  }
+
+  try {
+    // loadfile carries per-file options, so each queued entry keeps its own
+    // title instead of showing a raw URL in the playlist.
+    for (const item of items) {
+      const args = [item.streamUrl, 'append'];
+      if (item.title) {
+        args.push('-1', `force-media-title=${item.title}`);
+      }
+      mpv.command('loadfile', args);
+    }
+    debugLog(`Appended ${items.length} queued item(s) to the playlist`);
+  } catch (error) {
+    debugLog('Could not append queued items: ' + error);
+  }
+}
+
 /**
  * Handle a request to play several items in order (e.g. a whole album).
  * A playlist only exists within one window, so this always plays in the
@@ -493,19 +540,18 @@ function handlePlayMediaList(message) {
       core.osd(`Opening: ${firstItem.title}`);
     }
 
+    // The rest can only be appended once the first item has loaded. core.open()
+    // defers its mpv loadfile for network URLs while something is still
+    // playing (PlayerCore.open: it stores pendingUrl and closes the window
+    // first), and that load replaces the playlist — appending now would be
+    // wiped out a moment later.
+    const firstItemId = (String(firstItem.streamUrl).match(/\/Items\/([^/?]+)/) || [])[1] || null;
+    pendingPlaylistQueue =
+      queuedItems.length > 0 ? { items: queuedItems, at: Date.now(), itemId: firstItemId } : null;
+
     openInCurrentWindow(firstItem.streamUrl, firstItem.title);
 
-    // Append the rest to the playlist. loadfile carries per-file options, so
-    // each queued entry keeps its own title instead of showing a raw URL.
-    for (const item of queuedItems) {
-      const args = [item.streamUrl, 'append'];
-      if (item.title) {
-        args.push('-1', `force-media-title=${item.title}`);
-      }
-      mpv.command('loadfile', args);
-    }
-
-    debugLog(`Queued ${queuedItems.length} additional item(s) in the playlist`);
+    debugLog(`Holding ${queuedItems.length} item(s) until the first one loads`);
   } catch (error) {
     debugLog('Error playing media list: ' + error);
     core.osd('Failed to play tracks');
