@@ -403,6 +403,17 @@ function createPlaybackTrackingManager({
           const remaining = duration - lastKnownPosition;
           if (remaining <= 0.5) {
             log('EOF detected via tick, stopping playback tracking');
+
+            // This runs before mpv reports eof-reached and clears the session,
+            // so the watched state has to be sent from here. The progress
+            // threshold above only runs every PROGRESS_REPORT_TICKS ticks and
+            // can be missed entirely on short files or after a seek to the end.
+            if (!currentPlaybackSession.hasReportedWatched) {
+              const finished = currentPlaybackSession;
+              finished.hasReportedWatched = true;
+              markAsWatched(finished.serverBase, finished.itemId, finished.apiKey);
+            }
+
             stopPlaybackTracking();
           }
         }
