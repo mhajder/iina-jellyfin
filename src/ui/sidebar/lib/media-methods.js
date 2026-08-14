@@ -66,9 +66,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     hideMainContent() {
+      // Both helpers return to the media list by default; here the whole
+      // content area is going away, so they must not show it again.
+      this.hideEpisodeSelection(false);
+      this.hideAlbumTracks(false);
       document.getElementById('mainContent').style.display = 'none';
-      this.hideEpisodeSelection();
-      this.hideAlbumTracks();
     },
 
     /**
@@ -882,9 +884,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
     },
 
-    hideEpisodeSelection() {
+    hideEpisodeSelection(returnToMain = true) {
       document.getElementById('episodeSection').style.display = 'none';
-      document.getElementById('mainContent').style.display = 'block';
+      if (returnToMain) {
+        document.getElementById('mainContent').style.display = 'block';
+      }
       this.selectedEpisode = null;
       this.selectedSeason = null;
       document.getElementById('playEpisodeBtn').disabled = true;
@@ -1426,9 +1430,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
     },
 
-    hideAlbumTracks() {
+    hideAlbumTracks(returnToMain = true) {
       document.getElementById('albumTracksSection').style.display = 'none';
-      document.getElementById('mainContent').style.display = 'block';
+      if (returnToMain) {
+        document.getElementById('mainContent').style.display = 'block';
+      }
       this.selectedAlbum = null;
       this.selectedTrack = null;
       this.albumTracks = [];
