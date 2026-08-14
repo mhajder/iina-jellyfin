@@ -181,7 +181,7 @@ class JellyfinSidebar {
     });
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
-      this.disconnectFromServer();
+      this.logoutActiveServer();
     });
 
     // Login form

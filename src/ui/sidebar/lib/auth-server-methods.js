@@ -269,6 +269,31 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       }
     },
 
+    /**
+     * "Disconnect" in the UI: drop the connected server's stored credentials,
+     * then reset the view. Without this the access token stays in preferences
+     * and the next window silently auto-connects again.
+     */
+    logoutActiveServer() {
+      const serverId = this.currentServer?.serverId || this.activeServerId;
+
+      if (typeof iina !== 'undefined' && iina.postMessage) {
+        if (serverId) {
+          debugLog(`Removing stored credentials for server: ${serverId}`);
+          iina.postMessage('remove-server', { serverId });
+          this.servers = this.servers.filter((server) => server.id !== serverId);
+        } else {
+          // No id to target (e.g. legacy session) — clear the stored session so
+          // the token is not left behind.
+          debugLog('No server id for the active connection, clearing stored session');
+          iina.postMessage('clear-session');
+          this.servers = [];
+        }
+      }
+
+      this.disconnectFromServer();
+    },
+
     disconnectFromServer() {
       debugLog('Disconnecting from current server');
       this.currentUser = null;
