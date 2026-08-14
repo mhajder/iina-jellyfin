@@ -228,8 +228,19 @@ function onFileLoaded(fileUrl) {
 function showJellyfinBrowser() {
   debugLog('Attempting to show Jellyfin browser');
 
-  // Try to show sidebar directly first
-  if (sidebar && typeof sidebar.show === 'function') {
+  // The sidebar lives inside the player window, so it is only useful while that
+  // window is on screen. sidebar.show() cannot be used to detect that: it only
+  // throws while the window has never been loaded, and IINA keeps window.loaded
+  // true after the window is closed. Showing it then succeeds silently on an
+  // invisible window and the browser appears to do nothing until IINA restarts.
+  let windowAvailable = false;
+  try {
+    windowAvailable = Boolean(core.window && core.window.loaded && core.window.visible);
+  } catch (error) {
+    debugLog(`Could not read window state: ${error.message}`);
+  }
+
+  if (windowAvailable && sidebar && typeof sidebar.show === 'function') {
     try {
       sidebar.show();
       debugLog('Sidebar shown successfully');
@@ -238,7 +249,7 @@ function showJellyfinBrowser() {
       debugLog(`Direct sidebar.show() failed: ${error.message}`);
     }
   } else {
-    debugLog('Sidebar API unavailable');
+    debugLog(`No visible player window (windowAvailable=${windowAvailable}), using standalone`);
   }
 
   // Sidebar missing or threw — fall back to a standalone window.
