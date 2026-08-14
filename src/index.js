@@ -136,6 +136,21 @@ const {
 });
 
 /**
+ * Compare two Jellyfin base URLs by host and port, ignoring the scheme and any
+ * trailing slash, so http/https of the same server still count as one server.
+ */
+function isSameJellyfinHost(left, right) {
+  const hostOf = (url) =>
+    String(url || '')
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*$/, '')
+      .toLowerCase();
+
+  const leftHost = hostOf(left);
+  return leftHost.length > 0 && leftHost === hostOf(right);
+}
+
+/**
  * Handle file loaded event
  */
 function onFileLoaded(fileUrl) {
@@ -158,11 +173,19 @@ function onFileLoaded(fileUrl) {
     if (preferences.get('use_connected_account')) {
       const session = getStoredJellyfinSession();
       if (session && session.accessToken) {
-        reportServerBase = session.serverUrl;
-        reportApiKey = session.accessToken;
-        debugLog(
-          `Connected-account mode: reporting as ${session.username || session.serverName} @ ${reportServerBase} (ignoring URL api_key)`
-        );
+        // Only the credentials may change, never the item id — reporting a
+        // URL's item to a different server would 404 on every request.
+        if (isSameJellyfinHost(session.serverUrl, jellyfinInfo.serverBase)) {
+          reportServerBase = session.serverUrl;
+          reportApiKey = session.accessToken;
+          debugLog(
+            `Connected-account mode: reporting as ${session.username || session.serverName} @ ${reportServerBase} (ignoring URL api_key)`
+          );
+        } else {
+          debugLog(
+            `Connected-account mode ON but the logged-in server (${session.serverUrl}) is not the one in the URL (${jellyfinInfo.serverBase}); using URL api_key`
+          );
+        }
       } else {
         debugLog('Connected-account mode ON but no logged-in server; falling back to URL api_key');
       }
