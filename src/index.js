@@ -235,6 +235,11 @@ function openJellyfinStandaloneWindow(sessionData) {
       standaloneWindow.close();
     });
 
+    standaloneWindow.onMessage('play-media-list', (data) => {
+      handlePlayMediaList(data);
+      standaloneWindow.close();
+    });
+
     standaloneWindow.onMessage('clear-session', () => {
       clearJellyfinSession();
     });
@@ -373,6 +378,80 @@ function openInNewInstance(streamUrl, title) {
 }
 
 /**
+ * Open media in the current window, replacing what is playing
+ */
+function openInCurrentWindow(streamUrl, title) {
+  debugLog('Opening media in current window: ' + streamUrl);
+
+  // Set replacement guard so end-file handler doesn't send spurious stop
+  if (getCurrentPlaybackSession()) {
+    isReplacingPlayback = true;
+  }
+
+  // Clear any previous playlist entries to prevent stale titles
+  try {
+    if (playlist && typeof playlist.clear === 'function') {
+      playlist.clear();
+    }
+    // Reset autoplay state when starting new playback
+    clearQueuedFlag();
+  } catch (clearError) {
+    debugLog(`Could not clear playlist before opening: ${clearError.message}`);
+  }
+
+  // We use core.open instead of mpv.command('loadfile') because core.open
+  // properly triggers IINA's native lifecycle and sleep prevention checks.
+  // Set force-media-title BEFORE core.open so mpv uses it when loadfile runs.
+  if (title) {
+    mpv.set('force-media-title', title);
+  }
+  core.open(streamUrl);
+}
+
+/**
+ * Handle a request to play several items in order (e.g. a whole album).
+ * A playlist only exists within one window, so this always plays in the
+ * current window regardless of the open_in_new_window preference.
+ */
+function handlePlayMediaList(message) {
+  const items = (message?.items || []).filter((item) => item && item.streamUrl);
+  debugLog(`handlePlayMediaList called with ${items.length} playable item(s)`);
+
+  if (items.length === 0) {
+    debugLog('No playable items in list');
+    core.osd('Nothing to play');
+    return;
+  }
+
+  const [firstItem, ...queuedItems] = items;
+
+  try {
+    if (queuedItems.length > 0) {
+      core.osd(`Playing ${items.length} tracks, starting with: ${firstItem.title}`);
+    } else {
+      core.osd(`Opening: ${firstItem.title}`);
+    }
+
+    openInCurrentWindow(firstItem.streamUrl, firstItem.title);
+
+    // Append the rest to the playlist. loadfile carries per-file options, so
+    // each queued entry keeps its own title instead of showing a raw URL.
+    for (const item of queuedItems) {
+      const args = [item.streamUrl, 'append'];
+      if (item.title) {
+        args.push('-1', `force-media-title=${item.title}`);
+      }
+      mpv.command('loadfile', args);
+    }
+
+    debugLog(`Queued ${queuedItems.length} additional item(s) in the playlist`);
+  } catch (error) {
+    debugLog('Error playing media list: ' + error);
+    core.osd('Failed to play tracks');
+  }
+}
+
+/**
  * Handle media playback requests from sidebar
  */
 function handlePlayMedia(message) {
@@ -393,32 +472,8 @@ function handlePlayMedia(message) {
       core.osd(`Opening in new window: ${title}`);
       openInNewInstance(streamUrl, title);
     } else {
-      debugLog('Opening media in current window: ' + streamUrl);
       core.osd(`Opening: ${title}`);
-
-      // Set replacement guard so end-file handler doesn't send spurious stop
-      if (getCurrentPlaybackSession()) {
-        isReplacingPlayback = true;
-      }
-
-      // Clear any previous playlist entries to prevent stale titles
-      try {
-        if (playlist && typeof playlist.clear === 'function') {
-          playlist.clear();
-        }
-        // Reset autoplay state when starting new playback
-        clearQueuedFlag();
-      } catch (clearError) {
-        debugLog(`Could not clear playlist before opening: ${clearError.message}`);
-      }
-
-      // We use core.open instead of mpv.command('loadfile') because core.open
-      // properly triggers IINA's native lifecycle and sleep prevention checks.
-      // Set force-media-title BEFORE core.open so mpv uses it when loadfile runs.
-      if (title) {
-        mpv.set('force-media-title', title);
-      }
-      core.open(streamUrl);
+      openInCurrentWindow(streamUrl, title);
     }
 
     debugLog('Successfully initiated media opening: ' + streamUrl);
@@ -505,6 +560,7 @@ event.on('iina.window-loaded', () => {
 
   // Set up message handler for sidebar playback requests
   sidebar.onMessage('play-media', handlePlayMedia);
+  sidebar.onMessage('play-media-list', handlePlayMediaList);
 
   // The webview cannot read preferences, so it asks for the shared Jellyfin
   // client identity (device id + version) it must authenticate with.
