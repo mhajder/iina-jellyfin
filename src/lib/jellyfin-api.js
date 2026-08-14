@@ -30,6 +30,21 @@ function createJellyfinApi({ http, preferences, log }) {
     return `MediaBrowser ${parts.join(', ')}`;
   }
 
+  /**
+   * The client identity used in the Authorization header. Exposed so the
+   * sidebar/standalone webviews authenticate as the same Jellyfin device as the
+   * plugin itself — Jellyfin keys sessions and tokens by DeviceId, so a
+   * hardcoded one would collide between installs.
+   */
+  function getClientIdentity() {
+    return {
+      clientName: CLIENT_NAME,
+      deviceName: DEVICE_NAME,
+      deviceId: getDeviceId(),
+      version: CLIENT_VERSION,
+    };
+  }
+
   function buildJellyfinHeaders(apiKey, extraHeaders) {
     return {
       Authorization: buildAuthorizationHeader(apiKey),
@@ -190,6 +205,7 @@ function createJellyfinApi({ http, preferences, log }) {
   }
 
   return {
+    getClientIdentity,
     buildJellyfinHeaders,
     parseJellyfinUrl,
     isJellyfinUrl,

@@ -94,6 +94,10 @@ class JellyfinSidebar {
     this.searchTimeout = null;
     this.pendingSessionData = null;
 
+    // Jellyfin client identity (device id + version), pushed by the plugin
+    this.clientIdentity = null;
+    this.fallbackDeviceId = null;
+
     // Multi-server state
     this.servers = []; // Array of stored server objects
     this.activeServerId = null;
@@ -321,6 +325,11 @@ class JellyfinSidebar {
 
   setupMessageHandlers() {
     if (typeof iina !== 'undefined' && iina.onMessage) {
+      iina.onMessage('client-identity', (data) => {
+        debugLog('Received client-identity: ' + JSON.stringify(data));
+        this.handleClientIdentity(data);
+      });
+
       // Legacy session messages (backward compatible)
       iina.onMessage('session-available', (data) => {
         debugLog('Received session-available message: ' + JSON.stringify(data));
@@ -363,6 +372,8 @@ class JellyfinSidebar {
   requestSessionData() {
     debugLog('Requesting server data from main plugin');
     if (typeof iina !== 'undefined' && iina.postMessage) {
+      // Client identity is needed before any authentication request
+      iina.postMessage('get-client-identity');
       // Request multi-server list first
       iina.postMessage('get-servers');
       // Also request legacy session for backward compatibility
