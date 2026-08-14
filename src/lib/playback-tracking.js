@@ -59,6 +59,11 @@ function createPlaybackTrackingManager({
   }
 
   async function resumeFromJellyfin(serverBase, itemId, apiKey) {
+    // The session this resume belongs to. The user can load another file while
+    // the metadata request or the 1s delay is still pending — seeking then
+    // would jump the *new* file to this item's resume position.
+    const session = currentPlaybackSession;
+
     try {
       const resumePosition = await fetchResumePosition(serverBase, itemId, apiKey);
 
@@ -67,8 +72,18 @@ function createPlaybackTrackingManager({
         return;
       }
 
+      if (currentPlaybackSession !== session) {
+        log(`Playback session changed while fetching resume position for ${itemId}, not seeking`);
+        return;
+      }
+
       setTimeout(() => {
         try {
+          if (currentPlaybackSession !== session) {
+            log(`Playback session changed before resume seek for ${itemId}, not seeking`);
+            return;
+          }
+
           log(`Resuming playback at ${resumePosition.toFixed(1)}s`);
           core.seekTo(resumePosition);
 
