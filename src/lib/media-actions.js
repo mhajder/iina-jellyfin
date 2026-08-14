@@ -98,18 +98,21 @@ function createMediaActionsManager({
 
       const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?api_key=${apiKey}`;
 
-      let fileName;
+      // Everything lands in one @tmp directory, so the name has to identify the
+      // item and the track. Server-side names like "English.srt" repeat across
+      // the library and would otherwise overwrite each other.
+      const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      let suffix;
       if (subtitlePath) {
         const pathParts = subtitlePath.split(/[/\\]/);
-        const originalName = pathParts[pathParts.length - 1];
-        fileName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
-        log(`Using sanitized filename: ${fileName}`);
+        suffix = pathParts[pathParts.length - 1].replace(/[^a-zA-Z0-9._-]/g, '_');
       } else {
-        const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
         const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, '_');
-        fileName = `jellyfin_external_${sanitizedItemId}_${streamIndex}_${sanitizedLanguage}.${extension}`;
-        log(`Using generated filename: ${fileName}`);
+        suffix = `${sanitizedLanguage}.${extension}`;
       }
+
+      const fileName = `jellyfin_${sanitizedItemId}_${streamIndex}_${suffix}`;
+      log(`Using filename: ${fileName}`);
 
       const localPath = `@tmp/${fileName}`;
 
