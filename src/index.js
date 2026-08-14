@@ -262,11 +262,10 @@ function openJellyfinStandaloneWindow(sessionData) {
     // Load the same sidebar HTML in standalone window
     standaloneWindow.loadFile('src/ui/sidebar/index.html');
 
-    // Set window properties
-    standaloneWindow.setFrame({ x: 100, y: 100, width: 400, height: 600 });
-    standaloneWindow.setProperty('title', 'Jellyfin Browser');
-    standaloneWindow.setProperty('resizable', true);
-    standaloneWindow.setProperty('minimizable', true);
+    // Set window properties. setFrame takes four numbers (width, height, x, y)
+    // and setProperty a single object; anything else is silently ignored.
+    standaloneWindow.setFrame(400, 600, 100, 100);
+    standaloneWindow.setProperty({ title: 'Jellyfin Browser', resizable: true });
 
     // Set up message handlers for standalone window.
     // These must be registered after every loadFile() call and cannot be
