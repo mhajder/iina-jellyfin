@@ -154,11 +154,10 @@ function createMediaActionsManager({
       // by the server on demand, which takes minutes for large remuxes, and
       // mpv already exposes them from the file itself.
       const subtitleStreams = mediaStreams.filter(
-        (stream) =>
-          stream.Type === 'Subtitle' &&
-          stream.IsTextSubtitleStream &&
-          stream.IsExternal &&
-          stream.Path
+        // IsExternal is what identifies a sidecar file. Path is only used to
+        // name the download and Jellyfin omits it for non-admin accounts, so
+        // requiring it here would hide every subtitle from those users.
+        (stream) => stream.Type === 'Subtitle' && stream.IsTextSubtitleStream && stream.IsExternal
       );
 
       log(`Found ${subtitleStreams.length} external subtitle stream(s)`);
