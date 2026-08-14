@@ -1,5 +1,45 @@
 window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(debugLog) {
   return {
+    handleClientIdentity(identity) {
+      if (!identity || !identity.deviceId) {
+        debugLog('Ignoring client identity without a device id');
+        return;
+      }
+      this.clientIdentity = identity;
+      debugLog(`Client identity set: device ${identity.deviceId}, version ${identity.version}`);
+    },
+
+    /**
+     * Build the MediaBrowser Authorization header. The device id comes from the
+     * plugin (persisted in preferences) so the webview authenticates as the
+     * same Jellyfin device as the rest of the plugin. Jellyfin keys sessions
+     * and tokens by DeviceId, so a value shared across installs would make
+     * different users collide on the same server.
+     */
+    buildAuthorizationHeader(token) {
+      const identity = this.clientIdentity || {};
+
+      if (!identity.deviceId && !this.fallbackDeviceId) {
+        // Identity message hasn't arrived — use a unique id for this webview
+        // rather than a constant shared by every install.
+        this.fallbackDeviceId = `iina-jellyfin-webview-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+        debugLog('No client identity yet, using generated device id');
+      }
+
+      const parts = [
+        `Client="${identity.clientName || 'IINA Jellyfin Plugin'}"`,
+        `Device="${identity.deviceName || 'IINA'}"`,
+        `DeviceId="${identity.deviceId || this.fallbackDeviceId}"`,
+        `Version="${identity.version || '0.0.0'}"`,
+      ];
+
+      if (token) {
+        parts.push(`Token="${token}"`);
+      }
+
+      return `MediaBrowser ${parts.join(', ')}`;
+    },
+
     handleServersList(data) {
       if (!data) return;
       this.servers = data.servers || [];
@@ -360,8 +400,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         const initiateResponse = await httpClient.post(`${normalizedUrl}/QuickConnect/Initiate`, {
           headers: {
             'Content-Type': 'application/json',
-            Authorization:
-              'MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"',
+            Authorization: this.buildAuthorizationHeader(),
           },
         });
 
@@ -450,8 +489,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           {
             headers: {
               'Content-Type': 'application/json',
-              Authorization:
-                'MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"',
+              Authorization: this.buildAuthorizationHeader(),
             },
             data: JSON.stringify({ Secret: this.qcSecret }),
           }
@@ -671,8 +709,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            Authorization:
-              'MediaBrowser Client="IINA Jellyfin Plugin", Device="IINA", DeviceId="IINA-Jellyfin-Plugin", Version="0.4.0"',
+            Authorization: this.buildAuthorizationHeader(),
           },
           data: JSON.stringify(authData),
         });
