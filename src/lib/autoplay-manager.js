@@ -111,7 +111,11 @@ function createAutoplayManager({
     try {
       const episodes = await fetchSeriesEpisodes(serverBase, seriesId, seasonId, apiKey);
       const currentEpNum = Number(currentEpisodeNumber);
-      const nextEpisode = episodes.find((episode) => episode.indexNumber === currentEpNum + 1);
+      // The list is sorted by episode number, so the first entry above the
+      // current one is the next episode. Matching currentEpNum + 1 exactly
+      // would end the series at any gap: a missing episode, a double episode
+      // counted as two numbers, or a season that does not start at 1.
+      const nextEpisode = episodes.find((episode) => episode.indexNumber > currentEpNum);
 
       if (nextEpisode) {
         log(
