@@ -548,7 +548,10 @@ function handlePlayMediaList(message) {
     // playing (PlayerCore.open: it stores pendingUrl and closes the window
     // first), and that load replaces the playlist — appending now would be
     // wiped out a moment later.
-    const firstItemId = (String(firstItem.streamUrl).match(/\/Items\/([^/?]+)/) || [])[1] || null;
+    // Playback URLs are /Videos/{id}/stream or /Audio/{id}/stream; /Items/ is
+    // still matched for links produced by earlier versions.
+    const firstItemId =
+      (String(firstItem.streamUrl).match(/\/(?:Items|Videos|Audio)\/([^/?]+)/) || [])[1] || null;
     pendingPlaylistQueue =
       queuedItems.length > 0 ? { items: queuedItems, at: Date.now(), itemId: firstItemId } : null;
 
