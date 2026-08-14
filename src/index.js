@@ -400,7 +400,10 @@ menu.addItem(
     () => {
       showJellyfinBrowser();
     },
-    { keyBinding: 'Cmd+Shift+J' }
+    // mpv key binding format: Command is "Meta". Unknown modifier names are
+    // dropped silently, so "Cmd+Shift+J" would bind plain Shift+J and steal
+    // IINA's own "cycle subtitles backward" shortcut.
+    { keyBinding: 'Meta+Shift+j' }
   )
 );
 
