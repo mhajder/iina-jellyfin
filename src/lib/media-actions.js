@@ -241,11 +241,10 @@ function createMediaActionsManager({
 
     if (!currentUrl) {
       try {
-        log('No stored URL, checking core.status');
-        const currentFile = core.status.url || core.status.path;
-        log(`core.status.url = "${core.status.url}"`);
-        log(`core.status.path = "${core.status.path}"`);
-        log(`currentFile = "${currentFile}"`);
+        // core.status has no "path"; url is the only file location it exposes,
+        // and IINA returns it percent-decoded.
+        const currentFile = core.status.url;
+        log(`No stored URL, core.status.url = "${currentFile}"`);
 
         if (currentFile && isJellyfinUrl(currentFile)) {
           currentUrl = currentFile;
