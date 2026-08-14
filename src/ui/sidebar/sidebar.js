@@ -9,6 +9,17 @@
  */
 const MAX_DEBUG_LOG_LENGTH = 600;
 
+// Credentials travel in URLs (api_key=...) and in the MediaBrowser
+// Authorization header (Token="..."). Strip them from anything we log.
+const SECRET_QUERY_PARAM = /([?&](?:api_key|apikey|api-key|x-emby-token)=)[^&\s"']+/gi;
+const SECRET_TOKEN_FIELD = /((?:token|accesstoken|api_key)"?\s*[:=]\s*"?)[A-Za-z0-9._-]{8,}/gi;
+
+function redactSecrets(value) {
+  return String(value)
+    .replace(SECRET_QUERY_PARAM, '$1[redacted]')
+    .replace(SECRET_TOKEN_FIELD, '$1[redacted]');
+}
+
 function truncateDebugText(value, maxLength = MAX_DEBUG_LOG_LENGTH) {
   if (value.length <= maxLength) {
     return value;
@@ -73,7 +84,7 @@ function serializeDebugArg(arg) {
 
 function debugLog(...parts) {
   if (iina?.preferences?.get?.('debug_logging')) {
-    console.log(`DEBUG: ${parts.map(serializeDebugArg).join(' | ')}`);
+    console.log(`DEBUG: ${redactSecrets(parts.map(serializeDebugArg).join(' | '))}`);
   }
 }
 
