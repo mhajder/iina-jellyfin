@@ -145,7 +145,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
               url: serverData.serverUrl,
               userId: userResponse.data.Id,
               accessToken: serverData.accessToken,
-              serverId: serverData.id,
+              // Stored server entries carry "id"; session payloads sent to the
+              // webview carry "serverId". Both reach this function.
+              serverId: serverData.id || serverData.serverId,
             };
 
             this.currentUser = userResponse.data;

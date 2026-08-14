@@ -289,7 +289,8 @@ function createAutoplayManager({
           return;
         }
 
-        const seasonNum = nextEpisode.seasonNumber || seriesInfo.seasonNumber;
+        // ?? rather than ||: season 0 is a real season number
+        const seasonNum = nextEpisode.seasonNumber ?? seriesInfo.seasonNumber;
         queueNextEpisode(nextEpisode, seriesInfo.seriesName, seasonNum);
 
         log(`Autoplay setup complete — queued next episode: ${nextEpisode.name}`);
