@@ -710,12 +710,6 @@ event.on('iina.window-loaded', () => {
     }
   });
 
-  // Also expose a global method for sidebar communication
-  global.playMedia = (streamUrl, title) => {
-    debugLog('Global playMedia called with:', streamUrl, title);
-    handlePlayMedia({ streamUrl, title });
-  };
-
   // Send initial server data to sidebar after a brief delay
   setTimeout(() => {
     sidebar.postMessage('client-identity', getClientIdentity());
