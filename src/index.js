@@ -325,46 +325,37 @@ menu.addItem(
   )
 );
 
+// Replies from the global entry are registered once at load. IINA has no off(),
+// and the reply can arrive at any time, so a per-request listener isn't possible.
+if (typeof global !== 'undefined' && global.onMessage) {
+  global.onMessage('player-created', (data) => {
+    debugLog('New player instance created', {
+      playerId: data?.playerId,
+      title: data?.title,
+      url: data?.url,
+    });
+    if (data?.title) {
+      core.osd(`Opened in new window: ${data.title}`);
+    }
+  });
+
+  global.onMessage('player-creation-failed', (data) => {
+    debugLog('Failed to create new player instance: ' + data?.error);
+    core.osd('Failed to open new window - opening in current window');
+    // Fallback to current window
+    if (data?.url) {
+      core.open(data.url);
+    }
+  });
+}
+
 /**
  * Open media in a new IINA instance
  */
 function openInNewInstance(streamUrl, title) {
   if (typeof global !== 'undefined' && global.postMessage) {
     debugLog('Requesting new player instance from global entry');
-
-    // Listen for response from global entry
-    const messageHandler = (name, data) => {
-      if (name === 'player-created') {
-        debugLog('New player instance created', {
-          playerId: data?.playerId,
-          title: data?.title,
-          url: data?.url,
-        });
-        core.osd(`Opened in new window: ${data.title}`);
-      } else if (name === 'player-creation-failed') {
-        debugLog('Failed to create new player instance: ' + data.error);
-        core.osd('Failed to open new window - opening in current window');
-        // Fallback to current window
-        core.open(streamUrl);
-      }
-    };
-
-    // Set up temporary listener (IINA doesn't have off() so we use this pattern)
-    const originalHandler = global.onMessage;
-    global.onMessage = (name, callback) => {
-      if (name === 'player-created' || name === 'player-creation-failed') {
-        return messageHandler(name, callback);
-      }
-      return originalHandler?.call(global, name, callback);
-    };
-
-    // Request new instance creation
     global.postMessage('create-player', { url: streamUrl, title: title });
-
-    // Clean up listener after 5 seconds
-    setTimeout(() => {
-      global.onMessage = originalHandler;
-    }, 5000);
   } else {
     debugLog('Global entry not available, opening in current window');
     core.open(streamUrl);
