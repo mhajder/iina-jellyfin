@@ -141,9 +141,11 @@ function onFileLoaded(fileUrl) {
       } else {
         debugLog('Connected-account mode ON but no logged-in server; falling back to URL api_key');
       }
-    } else {
+    } else if (preferences.get('auto_login_enabled')) {
       // Default behaviour: remember this URL's session for auto-login.
       storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
+    } else {
+      debugLog('Auto-login from Jellyfin URLs disabled, not storing the URL credentials');
     }
 
     // Start playback tracking for progress sync
