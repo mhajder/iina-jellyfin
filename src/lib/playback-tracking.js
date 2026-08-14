@@ -431,19 +431,6 @@ function createPlaybackTrackingManager({
     playbackTickCount = 0;
   }
 
-  function handlePlaybackPositionChange() {
-    if (!currentPlaybackSession) return;
-
-    try {
-      const position = core.status.position;
-      if (position !== null && position !== undefined && position > 0) {
-        lastKnownPosition = position;
-      }
-    } catch (error) {
-      log(`Error in position change handler: ${error.message}`);
-    }
-  }
-
   function handlePauseChange() {
     if (!currentPlaybackSession) return;
 
@@ -514,7 +501,6 @@ function createPlaybackTrackingManager({
   return {
     startPlaybackTracking,
     stopPlaybackTracking,
-    handlePlaybackPositionChange,
     handlePauseChange,
     markAsWatched,
     getCurrentPlaybackSession,

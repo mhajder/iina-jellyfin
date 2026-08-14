@@ -88,9 +88,7 @@ debugLog('Jellyfin Subtitles Plugin loaded');
 const {
   startPlaybackTracking,
   stopPlaybackTracking,
-  handlePlaybackPositionChange,
   handlePauseChange,
-  markAsWatched,
   getCurrentPlaybackSession,
 } = createPlaybackTrackingManager({
   core,
@@ -554,8 +552,9 @@ function handlePlayMedia(message) {
 // Event handlers
 event.on('iina.file-loaded', onFileLoaded);
 
-// Playback tracking events for Jellyfin progress sync
-event.on('mpv.time-pos.changed', handlePlaybackPositionChange);
+// Position is sampled by the playback tracking tick. IINA does not observe
+// mpv's time-pos property, so there is no mpv.time-pos.changed event to
+// subscribe to — it drives its own time display from a periodic timer.
 
 // Pause/unpause state sync
 event.on('mpv.pause.changed', handlePauseChange);
@@ -585,14 +584,9 @@ event.on('mpv.end-file', () => {
   stopPlaybackTracking();
 });
 
-// Handle EOF reached — mark as watched if near end
-event.on('mpv.eof-reached', () => {
-  debugLog('End of file reached (eof-reached)');
-  const playbackSession = getCurrentPlaybackSession();
-  if (playbackSession && playbackSession.itemId) {
-    markAsWatched(playbackSession.serverBase, playbackSession.itemId, playbackSession.apiKey);
-  }
-});
+// Reaching the end marks the item watched from the playback tracking tick.
+// eof-reached is an mpv property, not an event, so there is no
+// mpv.eof-reached event to listen for.
 
 // Stop tracking when window closes
 event.on('iina.window-will-close', () => {
