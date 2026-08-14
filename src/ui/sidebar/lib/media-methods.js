@@ -1392,10 +1392,27 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         return;
       }
 
-      debugLog('Playing all album tracks, count:', this.albumTracks.length);
-      // Play first track, subsequent tracks will need to be handled by IINA's playlist
-      const firstTrack = this.albumTracks[0];
-      this.playMedia(firstTrack);
+      const items = this.albumTracks
+        .map((track) => ({
+          streamUrl: this.buildStreamUrl(track),
+          title: track.Name || 'Unknown Title',
+        }))
+        .filter((item) => item.streamUrl);
+
+      if (items.length === 0) {
+        debugLog('No playable album tracks');
+        return;
+      }
+
+      debugLog('Playing all album tracks, count:', items.length);
+
+      if (typeof iina !== 'undefined' && iina.postMessage) {
+        // The plugin plays the first track and appends the rest to the playlist
+        iina.postMessage('play-media-list', { items });
+      } else {
+        debugLog('iina.postMessage not available, playing the first track only');
+        this.playMedia(this.albumTracks[0]);
+      }
     },
 
     openAlbumInJellyfin() {
@@ -1415,10 +1432,19 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       document.getElementById('openAlbumInJellyfinBtn').disabled = true;
     },
 
+    buildStreamUrl(item) {
+      if (!this.currentServer || !item || !item.Id) return null;
+      return `${this.currentServer.url}/Items/${item.Id}/Download?api_key=${this.currentServer.accessToken}`;
+    },
+
     async playMedia(item) {
       debugLog('playMedia called with item type:', item.Type, 'name:', item.Name, 'id:', item.Id);
       try {
-        const streamUrl = `${this.currentServer.url}/Items/${item.Id}/Download?api_key=${this.currentServer.accessToken}`;
+        const streamUrl = this.buildStreamUrl(item);
+        if (!streamUrl) {
+          debugLog('Cannot build a stream URL: missing server or item id');
+          return;
+        }
         debugLog('Built download URL:', streamUrl);
         debugLog('Item details:', {
           Type: item.Type,
