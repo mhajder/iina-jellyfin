@@ -47,7 +47,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.renderServerList();
 
       if (!this.initialAutoConnectDone && !this.currentServer) {
-        const validServers = this.servers.filter((server) => server.userId);
+        // A userId is not required: a session captured from a played URL only
+        // gains one once connectToServer has read /Users/Me.
+        const validServers = this.servers.filter((server) => server.accessToken);
         if (validServers.length > 0) {
           const activeServer =
             validServers.find((server) => server.id === this.activeServerId) || validServers[0];
@@ -62,7 +64,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
     renderServerList() {
       const listEl = document.getElementById('savedServerList');
 
-      const validServers = this.servers.filter((server) => server.userId);
+      const validServers = this.servers.filter((server) => server.accessToken);
 
       if (validServers.length === 0) {
         listEl.style.display = 'none';
