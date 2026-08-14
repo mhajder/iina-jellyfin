@@ -12,6 +12,9 @@ function createPlaybackTrackingManager({
   log,
 }) {
   let currentPlaybackSession = null;
+  // Bumped by every start and stop so an in-flight startPlaybackTracking can
+  // tell that its session is no longer the one being played.
+  let sessionRequestCounter = 0;
   let lastReportedPosition = 0;
   let lastKnownPosition = 0;
   let playbackTickCount = 0;
@@ -285,6 +288,8 @@ function createPlaybackTrackingManager({
 
     log(`Starting playback tracking for item: ${itemId}`);
 
+    const requestId = ++sessionRequestCounter;
+
     let playSessionId = null;
     let mediaSourceId = null;
     try {
@@ -298,6 +303,14 @@ function createPlaybackTrackingManager({
       }
     } catch (error) {
       log(`Could not fetch playback info for session: ${error.message}`);
+    }
+
+    if (requestId !== sessionRequestCounter) {
+      // Another file was loaded (or playback stopped) while the playback info
+      // request was in flight — installing this session now would report
+      // progress for the wrong item.
+      log(`Playback tracking for ${itemId} is stale, not starting`);
+      return;
     }
 
     currentPlaybackSession = {
@@ -451,6 +464,10 @@ function createPlaybackTrackingManager({
   }
 
   function stopPlaybackTracking() {
+    // Invalidate any start that is still waiting on its playback info request,
+    // even when there is no session to stop yet.
+    sessionRequestCounter++;
+
     if (currentPlaybackSession) {
       stopPlaybackTick();
 
