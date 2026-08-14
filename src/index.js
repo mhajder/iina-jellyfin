@@ -252,107 +252,12 @@ function showJellyfinBrowser() {
   openJellyfinStandaloneWindow(sessionData);
 }
 
-let standaloneHandlersRegistered = false;
-
-/**
- * Register the standalone window's message handlers exactly once. IINA has no
- * off(), so registering them per open would run every action once per open:
- * playing the media twice, removing a server twice, and so on.
- */
-function registerStandaloneWindowHandlers() {
-  if (standaloneHandlersRegistered) {
-    return;
-  }
-  standaloneHandlersRegistered = true;
-
-  standaloneWindow.onMessage('get-client-identity', () => {
-    standaloneWindow.postMessage('client-identity', getClientIdentity());
-  });
-
-  standaloneWindow.onMessage('get-session', () => {
-    standaloneWindow.postMessage('session-data', getStoredJellyfinSession());
-  });
-
-  standaloneWindow.onMessage('play-media', (data) => {
-    handlePlayMedia(data);
-    // Close standalone window after starting playback
-    standaloneWindow.close();
-  });
-
-  standaloneWindow.onMessage('play-media-list', (data) => {
-    handlePlayMediaList(data);
-    standaloneWindow.close();
-  });
-
-  standaloneWindow.onMessage('clear-session', () => {
-    clearJellyfinSession();
-  });
-
-  standaloneWindow.onMessage('store-session', (data) => {
-    if (data && data.serverUrl && data.accessToken) {
-      const server = addOrUpdateServer({
-        serverUrl: data.serverUrl,
-        accessToken: data.accessToken,
-        serverName: data.serverName || '',
-        userId: data.userId || '',
-        username: data.username || '',
-      });
-      if (server) {
-        setActiveServerId(server.id);
-        standaloneWindow.postMessage('servers-updated', {
-          servers: loadStoredServers(),
-          activeServerId: server.id,
-        });
-      }
-    }
-  });
-
-  // Multi-server management messages
-  standaloneWindow.onMessage('get-servers', () => {
-    const servers = loadStoredServers();
-    const activeServerId = getActiveServerId();
-    standaloneWindow.postMessage('servers-list', { servers, activeServerId });
-  });
-
-  standaloneWindow.onMessage('remove-server', (data) => {
-    if (data && data.serverId) {
-      removeServer(data.serverId);
-      // Also notify standalone window (removeServer only notifies sidebar)
-      standaloneWindow.postMessage('servers-updated', {
-        servers: loadStoredServers(),
-        activeServerId: getActiveServerId(),
-      });
-    }
-  });
-
-  standaloneWindow.onMessage('switch-server', (data) => {
-    if (data && data.serverId) {
-      switchActiveServer(data.serverId);
-    }
-  });
-
-  standaloneWindow.onMessage('open-external-url', (data) => {
-    if (data && data.url) {
-      debugLog(`Opening external URL from standalone: ${data.url}`);
-      try {
-        utils.open(data.url);
-      } catch (error) {
-        debugLog(`Failed to open external URL: ${error.message}`);
-      }
-    }
-  });
-
-  debugLog('Standalone window message listeners registered');
-}
-
 /**
  * Open Jellyfin browser in a standalone window
  */
 function openJellyfinStandaloneWindow(sessionData) {
   try {
     debugLog('Creating standalone Jellyfin browser window');
-
-    registerStandaloneWindowHandlers();
 
     // Load the same sidebar HTML in standalone window
     standaloneWindow.loadFile('src/ui/sidebar/index.html');
@@ -362,6 +267,90 @@ function openJellyfinStandaloneWindow(sessionData) {
     standaloneWindow.setProperty('title', 'Jellyfin Browser');
     standaloneWindow.setProperty('resizable', true);
     standaloneWindow.setProperty('minimizable', true);
+
+    // Set up message handlers for standalone window.
+    // These must be registered after every loadFile() call and cannot be
+    // hoisted out of this function: standaloneWindow.loadFile() clears the
+    // window's message listeners (JavascriptAPIStandaloneWindow.loadFile ->
+    // messageHub.clearListeners), which would leave the webview unable to
+    // reach the plugin at all. Re-registering is safe because the message hub
+    // keys listeners by name and replaces the previous callback.
+    standaloneWindow.onMessage('get-client-identity', () => {
+      standaloneWindow.postMessage('client-identity', getClientIdentity());
+    });
+
+    standaloneWindow.onMessage('get-session', () => {
+      standaloneWindow.postMessage('session-data', getStoredJellyfinSession());
+    });
+
+    standaloneWindow.onMessage('play-media', (data) => {
+      handlePlayMedia(data);
+      // Close standalone window after starting playback
+      standaloneWindow.close();
+    });
+
+    standaloneWindow.onMessage('play-media-list', (data) => {
+      handlePlayMediaList(data);
+      standaloneWindow.close();
+    });
+
+    standaloneWindow.onMessage('clear-session', () => {
+      clearJellyfinSession();
+    });
+
+    standaloneWindow.onMessage('store-session', (data) => {
+      if (data && data.serverUrl && data.accessToken) {
+        const server = addOrUpdateServer({
+          serverUrl: data.serverUrl,
+          accessToken: data.accessToken,
+          serverName: data.serverName || '',
+          userId: data.userId || '',
+          username: data.username || '',
+        });
+        if (server) {
+          setActiveServerId(server.id);
+          standaloneWindow.postMessage('servers-updated', {
+            servers: loadStoredServers(),
+            activeServerId: server.id,
+          });
+        }
+      }
+    });
+
+    // Multi-server management messages
+    standaloneWindow.onMessage('get-servers', () => {
+      const servers = loadStoredServers();
+      const activeServerId = getActiveServerId();
+      standaloneWindow.postMessage('servers-list', { servers, activeServerId });
+    });
+
+    standaloneWindow.onMessage('remove-server', (data) => {
+      if (data && data.serverId) {
+        removeServer(data.serverId);
+        // Also notify standalone window (removeServer only notifies sidebar)
+        standaloneWindow.postMessage('servers-updated', {
+          servers: loadStoredServers(),
+          activeServerId: getActiveServerId(),
+        });
+      }
+    });
+
+    standaloneWindow.onMessage('switch-server', (data) => {
+      if (data && data.serverId) {
+        switchActiveServer(data.serverId);
+      }
+    });
+
+    standaloneWindow.onMessage('open-external-url', (data) => {
+      if (data && data.url) {
+        debugLog(`Opening external URL from standalone: ${data.url}`);
+        try {
+          utils.open(data.url);
+        } catch (error) {
+          debugLog(`Failed to open external URL: ${error.message}`);
+        }
+      }
+    });
 
     // Open the window
     standaloneWindow.open();
