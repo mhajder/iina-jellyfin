@@ -716,8 +716,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           this.selectMediaItem(response.data);
         }
       } catch (error) {
+        // The webview has no core API — iina here only exposes postMessage and
+        // onMessage — so report failures in the UI, not through an OSD.
         debugLog('Error getting item details:', error);
-        iina.core.osd('Failed to get item details');
+        const searchResults = document.getElementById('searchResults');
+        if (searchResults) {
+          searchResults.innerHTML = '<div class="error">Failed to open item</div>';
+        }
       }
     },
 
@@ -934,12 +939,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         debugLog('Successfully sent open-external-url message to IINA');
       } catch (error) {
-        debugLog('Error in openInJellyfin:', error);
-
-        const errorMessage = `Failed to open Jellyfin page: ${error.message}`;
-        if (typeof iina !== 'undefined' && iina.core && iina.core.osd) {
-          iina.core.osd(errorMessage);
-        }
+        // No core API in the webview; the plugin shows the OSD for this action
+        debugLog(`Failed to open Jellyfin page: ${error.message}`);
       }
     },
 
