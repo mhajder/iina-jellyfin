@@ -207,13 +207,14 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       try {
         const params = new URLSearchParams({
+          userId: this.currentUser.Id,
           Limit: 10,
           MediaTypes: 'Video',
           Fields:
             'Overview,UserData,RunTimeTicks,SeriesName,ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,ImageTags,BackdropImageTags',
         });
 
-        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items/Resume?${params.toString()}`;
+        const fullUrl = `${this.currentServer.url}/UserItems/Resume?${params.toString()}`;
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
@@ -305,7 +306,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           params.append('Genres', genreValue);
         }
 
-        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+        const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
@@ -360,7 +361,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           params.append('Genres', genreValue);
         }
 
-        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+        const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
@@ -1025,7 +1026,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         params.append('Genres', genreValue);
       }
 
-      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+      const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
       const response = await this.getHttpClient().get(fullUrl, {
         headers: {
@@ -1089,7 +1090,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         params.append('Genres', genreValue);
       }
 
-      const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+      const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
       const response = await this.getHttpClient().get(fullUrl, {
         headers: {
@@ -1284,7 +1285,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           Limit: 50,
         });
 
-        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+        const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
@@ -1333,7 +1334,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           IncludeItemTypes: 'Audio',
         });
 
-        const fullUrl = `${this.currentServer.url}/Users/${this.currentUser.Id}/Items?${params.toString()}`;
+        const fullUrl = `${this.currentServer.url}/Items?${params.toString()}`;
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
