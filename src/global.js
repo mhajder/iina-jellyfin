@@ -47,7 +47,7 @@ global.onMessage('create-player', (data, player) => {
     if (player) {
       global.postMessage(player, 'player-creation-failed', {
         error: error.toString(),
-        url: data.url,
+        url: data?.url,
       });
     }
   }
