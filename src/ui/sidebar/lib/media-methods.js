@@ -676,7 +676,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.selectedItem = item;
 
       document.querySelectorAll('.media-item').forEach((el) => el.classList.remove('selected'));
-      document.querySelector(`[data-item-id="${item.Id}"]`).classList.add('selected');
+      // The item is not always on screen (e.g. selected from search results)
+      const selectedEl = document.querySelector(`[data-item-id="${item.Id}"]`);
+      if (selectedEl) {
+        selectedEl.classList.add('selected');
+      }
 
       if (item.Type === 'Series') {
         debugLog('Item is a Series, showing episode selection');
