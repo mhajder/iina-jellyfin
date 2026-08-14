@@ -8,9 +8,15 @@ function createServerSessionStore({ preferences, sidebar, log }) {
       const servers = typeof serversJson === 'string' ? JSON.parse(serversJson) : serversJson;
       if (!Array.isArray(servers)) return [];
 
-      const validServers = servers.filter((server) => server.userId);
+      // A server is usable as long as it has somewhere to connect and a token.
+      // Sessions taken from a played URL have no userId until the sidebar
+      // connects and reads /Users/Me, so requiring one here deleted them on the
+      // very next read and auto-login from URLs never survived.
+      const validServers = servers.filter(
+        (server) => server && server.serverUrl && server.accessToken
+      );
       if (validServers.length !== servers.length) {
-        log(`Cleaned ${servers.length - validServers.length} ghost server entries without userId`);
+        log(`Cleaned ${servers.length - validServers.length} incomplete server entries`);
         saveStoredServers(validServers);
       }
       return validServers;
@@ -44,12 +50,21 @@ function createServerSessionStore({ preferences, sidebar, log }) {
       const servers = loadStoredServers();
       const normalizedUrl = serverData.serverUrl.replace(/\/$/, '');
 
-      const existingIndex = servers.findIndex(
-        (server) =>
-          server.serverUrl.replace(/\/$/, '') === normalizedUrl &&
-          ((serverData.userId && server.userId === serverData.userId) ||
-            (!serverData.userId && !server.userId))
-      );
+      const isSameUrl = (server) => server.serverUrl.replace(/\/$/, '') === normalizedUrl;
+
+      // Match the same user on the same server. Failing that, a known user
+      // takes over the entry left by a URL session on that server (it is the
+      // same credential being identified), rather than adding a duplicate.
+      // A URL session never claims an entry that already belongs to a user.
+      let existingIndex = -1;
+      if (serverData.userId) {
+        existingIndex = servers.findIndex(
+          (server) => isSameUrl(server) && server.userId === serverData.userId
+        );
+      }
+      if (existingIndex < 0) {
+        existingIndex = servers.findIndex((server) => isSameUrl(server) && !server.userId);
+      }
 
       const serverEntry = {
         id: existingIndex >= 0 ? servers[existingIndex].id : `srv-${Date.now()}`,
