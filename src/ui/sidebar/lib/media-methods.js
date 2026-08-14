@@ -969,11 +969,6 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           return false;
         }
 
-        if (episode.CanDownload === false) {
-          debugLog(`Episode ${episode.Name} marked as not downloadable`);
-          return false;
-        }
-
         if (episode.IsFolder === true) {
           debugLog(`Episode ${episode.Name} marked as folder`);
           return false;
@@ -1443,9 +1438,16 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       document.getElementById('openAlbumInJellyfinBtn').disabled = true;
     },
 
+    /**
+     * Build a direct-play URL. The streaming routes are what Jellyfin's own
+     * clients use; /Items/{id}/Download additionally requires the account to
+     * have media download permission, which browsing does not.
+     * static=true asks for the original file without transcoding.
+     */
     buildStreamUrl(item) {
       if (!this.currentServer || !item || !item.Id) return null;
-      return `${this.currentServer.url}/Items/${item.Id}/Download?api_key=${this.currentServer.accessToken}`;
+      const route = item.Type === 'Audio' ? 'Audio' : 'Videos';
+      return `${this.currentServer.url}/${route}/${item.Id}/stream?static=true&api_key=${this.currentServer.accessToken}`;
     },
 
     async playMedia(item) {

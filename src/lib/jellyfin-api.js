@@ -80,11 +80,14 @@ function createJellyfinApi({ http, preferences, log }) {
       log(`Extracted pathname: ${pathname}`);
       log(`Extracted queryString: ${queryString}`);
 
-      const pathMatch = pathname.match(/\/Items\/([^/]+)/);
+      // Playback uses the streaming routes (/Videos/{id}/stream,
+      // /Audio/{id}/stream); /Items/{id}/... is still accepted so links made by
+      // earlier versions, and Jellyfin download links, keep working.
+      const pathMatch = pathname.match(/\/(?:Items|Videos|Audio)\/([^/]+)/);
       log(`Path match result: ${pathMatch ? pathMatch[0] : 'no match'}`);
 
       if (!pathMatch) {
-        log(`No /Items/ pattern found in pathname: ${pathname}`);
+        log(`No item id found in pathname: ${pathname}`);
         return null;
       }
 

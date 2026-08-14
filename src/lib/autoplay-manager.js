@@ -20,7 +20,7 @@ function createAutoplayManager({
 
       const queryParams = [
         'seasonId=' + encodeURIComponent(seasonId),
-        'fields=' + encodeURIComponent('MediaSources,Path,LocationType,IsFolder,CanDownload'),
+        'fields=' + encodeURIComponent('MediaSources,Path,LocationType,IsFolder'),
       ].join('&');
 
       const response = await http.get(
@@ -44,16 +44,15 @@ function createAutoplayManager({
         return [];
       }
 
-      const episodes = episodeData.Items.filter((episode) => {
-        const hasMediaSources = episode.MediaSources && episode.MediaSources.length > 0;
-        const canDownload = episode.CanDownload !== false;
-        return hasMediaSources && canDownload;
-      }).map((episode) => ({
+      // Playback streams the item, so download permission is irrelevant here
+      const episodes = episodeData.Items.filter(
+        (episode) => episode.MediaSources && episode.MediaSources.length > 0
+      ).map((episode) => ({
         id: episode.Id,
         name: episode.Name,
         indexNumber: Number(episode.IndexNumber) || 0,
         duration: episode.RunTimeTicks,
-        playUrl: `${serverBase}/Items/${episode.Id}/Download?api_key=${apiKey}`,
+        playUrl: `${serverBase}/Videos/${episode.Id}/stream?static=true&api_key=${apiKey}`,
       }));
 
       episodes.sort((left, right) => left.indexNumber - right.indexNumber);
