@@ -21,7 +21,6 @@ const {
   sidebar,
   global,
   standaloneWindow,
-  playlist,
 } = iina;
 
 // Guard to prevent spurious stop reports during a file switch. Stored as a
@@ -441,11 +440,11 @@ function openInCurrentWindow(streamUrl, title) {
     markReplacingPlayback();
   }
 
-  // Clear any previous playlist entries to prevent stale titles
+  // Clear any previous playlist entries to prevent stale titles. IINA's
+  // playlist API has no clear(), so use mpv's own command — it drops every
+  // entry except the one currently playing, which core.open replaces below.
   try {
-    if (playlist && typeof playlist.clear === 'function') {
-      playlist.clear();
-    }
+    mpv.command('playlist-clear', []);
     // Reset autoplay state when starting new playback
     clearQueuedFlag();
   } catch (clearError) {
