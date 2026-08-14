@@ -527,8 +527,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       let subtitle = '';
       if (item.Type === 'Episode' && item.SeriesName) {
-        const season = item.ParentIndexNumber || '?';
-        const episode = item.IndexNumber || '?';
+        // ?? not ||: specials are season 0, and episode 0 exists too
+        const season = item.ParentIndexNumber ?? '?';
+        const episode = item.IndexNumber ?? '?';
         subtitle = `${item.SeriesName} - S${season}E${episode}`;
       } else if (item.Type === 'Series') {
         subtitle = 'TV Series';
@@ -812,7 +813,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             episodeEl.dataset.episodeId = episode.Id;
             episodeEl.dataset.available = isAvailable.toString();
 
-            const episodeNum = episode.IndexNumber || '?';
+            const episodeNum = episode.IndexNumber ?? '?';
             const title = episode.Name || `Episode ${episodeNum}`;
             const duration = this.formatRuntime(episode.RunTimeTicks);
 
