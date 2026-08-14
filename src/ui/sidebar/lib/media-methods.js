@@ -33,7 +33,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           let optionsHtml = allOption;
 
           response.data.Items.forEach((genre) => {
-            optionsHtml += `<option value="${genre.Name}">${genre.Name}</option>`;
+            const genreName = this.escapeHtml(genre.Name);
+            optionsHtml += `<option value="${genreName}">${genreName}</option>`;
           });
 
           moviesGenreSelect.innerHTML = optionsHtml;
@@ -496,7 +497,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const thumbHtml = thumbUrl
         ? `<div class="thumb-wrapper">
-           <img class="list-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+           <img class="list-thumb" src="${this.escapeHtml(thumbUrl)}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
            <div class="play-overlay">&#9654;</div>
          </div>`
         : `<div class="thumb-wrapper thumb-fallback"><div class="play-overlay">&#9654;</div></div>`;
@@ -504,9 +505,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       itemEl.innerHTML = `
             ${thumbHtml}
             <div class="list-body">
-                <div class="media-title">${title}${year}</div>
-                ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
-                <div class="media-meta">${type}</div>
+                <div class="media-title">${this.escapeHtml(title)}${this.escapeHtml(year)}</div>
+                ${subtitle ? `<div class="media-subtitle">${this.escapeHtml(subtitle)}</div>` : ''}
+                <div class="media-meta">${this.escapeHtml(type)}</div>
                 <div class="media-actions">
                     <button class="button media-action-btn" data-action="select">
                         ${item.Type === 'Series' ? 'Browse Episodes' : item.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
@@ -570,7 +571,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const thumbHtml = thumbUrl
         ? `<div class="thumb-wrapper">
-           <img class="list-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+           <img class="list-thumb" src="${this.escapeHtml(thumbUrl)}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
            <div class="play-overlay">&#9654;</div>
          </div>`
         : `<div class="thumb-wrapper thumb-fallback"><div class="play-overlay">&#9654;</div></div>`;
@@ -578,8 +579,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       itemEl.innerHTML = `
             ${thumbHtml}
             <div class="list-body">
-                <div class="media-title">${title}${year}</div>
-                <div class="media-meta">${type}</div>
+                <div class="media-title">${this.escapeHtml(title)}${this.escapeHtml(year)}</div>
+                <div class="media-meta">${this.escapeHtml(type)}</div>
                 <div class="media-actions">
                     <button class="button search-action-btn" data-action="select">
                         ${hint.Type === 'Series' ? 'Browse Episodes' : hint.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
@@ -769,7 +770,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
             const episodeThumbHtml = episodeThumbUrl
               ? `<div class="ep-thumb-wrapper">
-                 <img class="ep-thumb" src="${episodeThumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
+                 <img class="ep-thumb" src="${this.escapeHtml(episodeThumbUrl)}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none';" />
                </div>`
               : `<div class="ep-thumb-wrapper thumb-fallback"></div>`;
 
@@ -780,7 +781,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             episodeEl.innerHTML = `
             ${episodeThumbHtml}
             <div class="ep-body">
-              <span class="ep-title">${episodeNum}. ${title}${availabilityIcon}</span>
+              <span class="ep-title">${this.escapeHtml(episodeNum)}. ${this.escapeHtml(title)}${availabilityIcon}</span>
             </div>
             ${duration ? `<span class="ep-duration">${duration}</span>` : ''}
           `;
@@ -1067,7 +1068,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           let optionsHtml = '<option value="all" selected>All Genres</option>';
 
           response.data.Items.forEach((genre) => {
-            optionsHtml += `<option value="${genre.Name}">${genre.Name}</option>`;
+            const genreName = this.escapeHtml(genre.Name);
+            optionsHtml += `<option value="${genreName}">${genreName}</option>`;
           });
 
           musicGenreSelect.innerHTML = optionsHtml;
@@ -1140,7 +1142,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const thumbHtml = thumbUrl
         ? `<div class="album-thumb-wrapper">
-           <img class="album-thumb" src="${thumbUrl}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none'; this.parentElement.textContent='${fallbackIcon}';" />
+           <img class="album-thumb" src="${this.escapeHtml(thumbUrl)}" loading="lazy" alt="" onerror="this.parentElement.classList.add('thumb-fallback'); this.style.display='none'; this.parentElement.textContent='${fallbackIcon}';" />
          </div>`
         : `<div class="album-thumb-wrapper thumb-fallback">${fallbackIcon}</div>`;
 
@@ -1154,8 +1156,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       itemEl.innerHTML = `
         ${thumbHtml}
         <div class="list-body">
-          <div class="media-title">${title}</div>
-          ${subtitle ? `<div class="media-subtitle">${subtitle}</div>` : ''}
+          <div class="media-title">${this.escapeHtml(title)}</div>
+          ${subtitle ? `<div class="media-subtitle">${this.escapeHtml(subtitle)}</div>` : ''}
           <div class="media-actions">
             <button class="button media-action-btn" data-action="select">${actionLabel}</button>
             <button class="button secondary media-action-btn" data-action="open-jellyfin">Jellyfin</button>
@@ -1232,7 +1234,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         if (response.data && response.data.Items && response.data.Items.length > 0) {
           this.renderMusicList(response.data.Items, container, 'album');
         } else {
-          container.innerHTML = `<div class="empty-state">No albums found for ${artist.Name}</div>`;
+          container.innerHTML = `<div class="empty-state">No albums found for ${this.escapeHtml(artist.Name)}</div>`;
         }
       } catch (error) {
         debugLog('Error loading artist albums:', error);
@@ -1301,10 +1303,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         const artists = track.Artists?.join(', ') || track.AlbumArtist || '';
 
         trackEl.innerHTML = `
-          <span class="track-number">${trackNum}</span>
+          <span class="track-number">${this.escapeHtml(trackNum)}</span>
           <div class="track-body">
-            <span class="track-title">${title}</span>
-            ${artists ? `<span class="track-artist">${artists}</span>` : ''}
+            <span class="track-title">${this.escapeHtml(title)}</span>
+            ${artists ? `<span class="track-artist">${this.escapeHtml(artists)}</span>` : ''}
           </div>
           ${duration ? `<span class="track-duration">${duration}</span>` : ''}
         `;

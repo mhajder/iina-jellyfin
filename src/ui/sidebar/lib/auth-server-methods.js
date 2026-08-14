@@ -165,10 +165,18 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.renderServerList();
     },
 
+    /**
+     * Escape a server-provided value for interpolation into innerHTML.
+     * Quotes are escaped too so the result is also safe inside an attribute.
+     */
     escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str || '';
-      return div.innerHTML;
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     },
 
     handleSessionAvailable(sessionData) {
