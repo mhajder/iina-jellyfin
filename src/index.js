@@ -80,6 +80,7 @@ const {
 } = createServerSessionStore({
   preferences,
   sidebar,
+  standaloneWindow,
   log: debugLog,
 });
 
@@ -336,12 +337,8 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     standaloneWindow.onMessage('remove-server', (data) => {
       if (data && data.serverId) {
+        // The store notifies both webviews itself
         removeServer(data.serverId);
-        // Also notify standalone window (removeServer only notifies sidebar)
-        standaloneWindow.postMessage('servers-updated', {
-          servers: loadStoredServers(),
-          activeServerId: getActiveServerId(),
-        });
       }
     });
 

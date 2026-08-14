@@ -500,6 +500,15 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
     },
 
     async authenticateWithQuickConnect() {
+      // The poll that triggers this may already have been cancelled, which
+      // clears both values — without this the request would go to "null/Users/
+      // AuthenticateWithQuickConnect" and report a login failure the user
+      // never attempted.
+      if (!this.qcServerUrl || !this.qcSecret) {
+        debugLog('Quick Connect was cancelled before authentication, ignoring');
+        return;
+      }
+
       try {
         const httpClient = this.getHttpClient();
         const response = await httpClient.post(
