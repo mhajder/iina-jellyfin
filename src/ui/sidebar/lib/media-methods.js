@@ -6,13 +6,12 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
      * overwrite fresher results (fast typing in search, flipping filters, ...).
      */
     nextRequestId(key) {
-      if (!this.requestIds) this.requestIds = {};
       this.requestIds[key] = (this.requestIds[key] || 0) + 1;
       return this.requestIds[key];
     },
 
     isLatestRequest(key, requestId) {
-      const current = this.requestIds ? this.requestIds[key] : undefined;
+      const current = this.requestIds[key];
       if (current !== requestId) {
         debugLog(`Dropping stale ${key} response (#${requestId}, current #${current})`);
         return false;
@@ -560,6 +559,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
                     <button class="button media-action-btn" data-action="select">
                         ${item.Type === 'Series' ? 'Browse Episodes' : item.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
                     </button>
+                    ${this.downloadButtonHtml(item, 'media-action-btn')}
                     <button class="button secondary media-action-btn" data-action="open-jellyfin">
                         Jellyfin
                     </button>
@@ -567,6 +567,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             </div>
             ${duration ? `<div class="list-duration">${duration}</div>` : ''}
         `;
+      this.refreshDownloadButtons(itemEl);
 
       const actionButtons = itemEl.querySelectorAll('.media-action-btn');
       debugLog(`Adding event listeners to ${actionButtons.length} action buttons`);
@@ -579,7 +580,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
           if (action === 'select') {
             this.selectMediaItem(item);
-          } else if (action === 'open-jellyfin') {
+          } else if (action === 'download') {
+            this.handleDownloadButtonClick(item);
+          } else {
             this.openInJellyfin(item);
           }
         });
@@ -633,6 +636,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
                     <button class="button search-action-btn" data-action="select">
                         ${hint.Type === 'Series' ? 'Browse Episodes' : hint.Type === 'MusicAlbum' ? 'View Tracks' : 'Play'}
                     </button>
+                    ${this.downloadButtonHtml({ Id: hint.ItemId, Type: hint.Type }, 'search-action-btn')}
                     <button class="button secondary search-action-btn" data-action="open-jellyfin">
                         Open in Jellyfin
                     </button>
@@ -640,6 +644,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             </div>
             ${duration ? `<div class="list-duration">${duration}</div>` : ''}
         `;
+      this.refreshDownloadButtons(itemEl);
 
       const actionButtons = itemEl.querySelectorAll('.search-action-btn');
       debugLog(`Adding event listeners to ${actionButtons.length} search action buttons`);
@@ -652,7 +657,14 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
           if (action === 'select') {
             this.selectSearchItem(hint);
-          } else if (action === 'open-jellyfin') {
+          } else if (action === 'download') {
+            const entry = this.getOfflineEntry(hint.ItemId);
+            if (this.isOfflineReady(entry)) {
+              this.playOfflineDownload(hint.ItemId);
+            } else {
+              this.requestOfflineDownloadForHint(hint);
+            }
+          } else {
             const searchItem = {
               Id: hint.ItemId,
               Type: hint.Type,
@@ -737,6 +749,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.selectedEpisode = null;
       this.selectedSeason = null;
       document.getElementById('playEpisodeBtn').disabled = true;
+      document.getElementById('downloadEpisodeBtn').disabled = true;
       document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
 
       try {
@@ -854,6 +867,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
                 episodeEl.classList.add('selected');
                 this.selectedEpisode = episode;
                 document.getElementById('playEpisodeBtn').disabled = false;
+                document.getElementById('downloadEpisodeBtn').disabled = false;
                 document.getElementById('openEpisodeInJellyfinBtn').disabled = false;
               });
             } else {
@@ -898,6 +912,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.selectedEpisode = null;
       this.selectedSeason = null;
       document.getElementById('playEpisodeBtn').disabled = true;
+      document.getElementById('downloadEpisodeBtn').disabled = true;
       document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
       // Clear episode list and season dropdown so stale data isn't shown next time
       document.getElementById('episodeList').innerHTML = '';
@@ -1214,11 +1229,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           ${subtitle ? `<div class="media-subtitle">${this.escapeHtml(subtitle)}</div>` : ''}
           <div class="media-actions">
             <button class="button media-action-btn" data-action="select">${actionLabel}</button>
+            ${viewType === 'song' ? this.downloadButtonHtml(item, 'media-action-btn') : ''}
             <button class="button secondary media-action-btn" data-action="open-jellyfin">Jellyfin</button>
           </div>
         </div>
         ${duration ? `<div class="list-duration">${duration}</div>` : ''}
       `;
+      this.refreshDownloadButtons(itemEl);
 
       const actionButtons = itemEl.querySelectorAll('.media-action-btn');
       actionButtons.forEach((button) => {
@@ -1227,7 +1244,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           const action = button.dataset.action;
           if (action === 'select') {
             this.selectMusicItem(item, viewType);
-          } else if (action === 'open-jellyfin') {
+          } else if (action === 'download') {
+            this.handleDownloadButtonClick(item);
+          } else {
             this.openInJellyfin(item);
           }
         });

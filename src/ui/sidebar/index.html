@@ -23,7 +23,35 @@
             <button id="logoutBtn" class="button secondary" style="display: none">
               Disconnect
             </button>
+            <button
+              id="downloadsBtn"
+              class="button secondary downloads-btn"
+              title="Offline downloads"
+            >
+              Downloads
+              <span id="downloadsBadge" class="downloads-badge" style="display: none"></span>
+            </button>
           </div>
+          <div id="downloadsNotice" class="downloads-notice" style="display: none"></div>
+        </div>
+      </div>
+
+      <!-- Offline Downloads (available without a server connection) -->
+      <div id="downloadsSection" class="episode-section downloads-section">
+        <div
+          class="section-title"
+          style="display: flex; justify-content: space-between; align-items: center"
+        >
+          <span>Offline Downloads</span>
+          <span id="downloadsSummary" class="downloads-summary"></span>
+        </div>
+        <div id="downloadsDirectory" class="downloads-directory"></div>
+        <div id="downloadsList" class="downloads-list">
+          <div class="empty-state">No downloads yet</div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 8px">
+          <button id="openDownloadsFolderBtn" class="button secondary">Open Folder</button>
+          <button id="closeDownloadsBtn" class="button secondary">Back</button>
         </div>
       </div>
 
@@ -368,6 +396,14 @@
         </div>
         <div style="display: flex; gap: 8px; margin-top: 8px">
           <button id="playEpisodeBtn" class="button" disabled>Play Episode</button>
+          <button
+            id="downloadEpisodeBtn"
+            class="button secondary"
+            disabled
+            title="Download for offline playback"
+          >
+            ⬇ Offline
+          </button>
           <button id="openEpisodeInJellyfinBtn" class="button secondary" disabled>
             Open in Jellyfin
           </button>
@@ -376,8 +412,10 @@
       </div>
     </div>
 
+    <script src="lib/debug-log.js"></script>
     <script src="lib/media-methods.js"></script>
     <script src="lib/auth-server-methods.js"></script>
+    <script src="lib/offline-methods.js"></script>
     <script src="sidebar.js"></script>
   </body>
 </html>

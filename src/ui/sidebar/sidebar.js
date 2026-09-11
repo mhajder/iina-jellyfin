@@ -3,90 +3,7 @@
  * Handles authentication and media browsing
  */
 
-/**
- * Debug logging helper function
- * Only logs if debug logging is enabled in preferences
- */
-const MAX_DEBUG_LOG_LENGTH = 600;
-
-// Credentials travel in URLs (api_key=...) and in the MediaBrowser
-// Authorization header (Token="..."). Strip them from anything we log.
-const SECRET_QUERY_PARAM = /([?&](?:api_key|apikey|api-key|x-emby-token)=)[^&\s"']+/gi;
-const SECRET_TOKEN_FIELD = /((?:token|accesstoken|api_key)"?\s*[:=]\s*"?)[A-Za-z0-9._-]{8,}/gi;
-
-function redactSecrets(value) {
-  return String(value)
-    .replace(SECRET_QUERY_PARAM, '$1[redacted]')
-    .replace(SECRET_TOKEN_FIELD, '$1[redacted]');
-}
-
-function truncateDebugText(value, maxLength = MAX_DEBUG_LOG_LENGTH) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength)}…[truncated ${value.length - maxLength} chars]`;
-}
-
-function serializeDebugArg(arg) {
-  if (arg === null || arg === undefined) {
-    return String(arg);
-  }
-
-  if (typeof arg === 'string') {
-    return truncateDebugText(arg);
-  }
-
-  if (typeof arg === 'number' || typeof arg === 'boolean' || typeof arg === 'bigint') {
-    return String(arg);
-  }
-
-  if (arg instanceof Error) {
-    return `${arg.name}: ${arg.message}`;
-  }
-
-  if (Array.isArray(arg)) {
-    return `[Array(${arg.length})]`;
-  }
-
-  if (typeof arg === 'object') {
-    const keys = Object.keys(arg);
-    const preview = keys.slice(0, 8).reduce((acc, key) => {
-      const value = arg[key];
-      if (
-        value === null ||
-        value === undefined ||
-        typeof value === 'number' ||
-        typeof value === 'boolean'
-      ) {
-        acc[key] = value;
-      } else if (typeof value === 'string') {
-        acc[key] = truncateDebugText(value, 120);
-      } else if (Array.isArray(value)) {
-        acc[key] = `[Array(${value.length})]`;
-      } else if (typeof value === 'object') {
-        acc[key] = '[Object]';
-      } else {
-        acc[key] = String(value);
-      }
-      return acc;
-    }, {});
-
-    if (keys.length > 8) {
-      preview.__extraKeys = keys.length - 8;
-    }
-
-    return truncateDebugText(JSON.stringify(preview));
-  }
-
-  return truncateDebugText(String(arg));
-}
-
-function debugLog(...parts) {
-  if (iina?.preferences?.get?.('debug_logging')) {
-    console.log(`DEBUG: ${redactSecrets(parts.map(serializeDebugArg).join(' | '))}`);
-  }
-}
+const debugLog = window.createSidebarDebugLogger();
 
 debugLog('Jellyfin Sidebar loaded');
 
@@ -104,6 +21,8 @@ class JellyfinSidebar {
     this.albumTracks = [];
     this.searchTimeout = null;
     this.pendingSessionData = null;
+    // Request tickets per list, see nextRequestId()
+    this.requestIds = {};
 
     // Jellyfin client identity (device id + version), pushed by the plugin
     this.clientIdentity = null;
@@ -118,6 +37,10 @@ class JellyfinSidebar {
     this.qcSecret = null;
     this.qcPollingInterval = null;
     this.qcServerUrl = null;
+
+    // Offline downloads state (list pushed by the plugin)
+    this.offlineDownloads = [];
+    this.offlineDirectory = null;
 
     this.init();
   }
@@ -173,6 +96,9 @@ class JellyfinSidebar {
     this.setupEventListeners();
     this.setupTabNavigation();
     this.setupMessageHandlers();
+    // The downloads panel works without a server, so it is wired regardless
+    // of the connection state.
+    this.setupOfflineUi();
 
     // Request session data from main plugin
     this.requestSessionData();
@@ -404,6 +330,7 @@ class JellyfinSidebar {
 
 Object.assign(JellyfinSidebar.prototype, window.createSidebarAuthServerMethods(debugLog));
 Object.assign(JellyfinSidebar.prototype, window.createSidebarMediaMethods(debugLog));
+Object.assign(JellyfinSidebar.prototype, window.createSidebarOfflineMethods(debugLog));
 
 // Expose for main plugin communication
 window.JellyfinSidebar = JellyfinSidebar;

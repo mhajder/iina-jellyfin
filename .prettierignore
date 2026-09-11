@@ -5,3 +5,9 @@ pnpm-lock.yaml
 yarn.lock
 CHANGELOG.md
 Info.json
+coverage/
+reports/
+.stryker-tmp/
+tests/e2e/.artifacts/
+playwright-report/
+test-results/

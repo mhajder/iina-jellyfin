@@ -28,6 +28,14 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Episode availability detection**: Unavailable episodes are visually marked and cannot be clicked
 - **Direct playback**: Click to play media directly in IINA
 
+### Offline Downloads
+
+- **Download for offline playback**: Save movies, episodes and songs to disk with one click (⬇ Offline)
+- **Subtitles included**: Every external text subtitle of the item is downloaded next to the media file
+- **Works without Internet**: The Downloads panel, playback and subtitles need no server connection
+- **Progress, cancel, retry**: Live progress in the sidebar, cancel running downloads, retry failed ones
+- **Configurable folder**: Keep downloads in the plugin data folder or any folder you choose (e.g. an external drive)
+
 ### General Features
 
 - **Video title enhancement**: Sets proper movie/show titles instead of generic filenames
@@ -149,6 +157,21 @@ The Movies and TV Series tabs include powerful filtering and sorting tools to he
 
 Click the "Filter/Sort" button in the Movies or TV Series tab header to toggle the filter panel and customize your view.
 
+#### Offline Downloads
+
+Movies, episodes and songs can be saved to disk and played later without any connection to the server:
+
+1. Click **⬇ Offline** on a movie or song row, or select an episode and click **⬇ Offline** in the episode picker. Search results have the same button.
+2. The plugin downloads the original file (no transcoding) together with all of its external text subtitles (SRT, VTT, ASS). Progress is shown on the button and in the Downloads panel; the **Downloads** button carries a badge while something is downloading.
+3. When the download is complete the button turns into **▶ Offline**. Clicking it plays the local copy, even while you are online.
+4. The **Downloads** button (always visible, connected or not) opens the Downloads panel. From there you can **Play**, **Reveal** the file in Finder, **Remove** a download (asks for confirmation), **Cancel** a running download or **Retry** a failed one. **Open Folder** shows the download folder itself.
+
+When a downloaded file is played, its subtitles are loaded automatically and the window title is set from the stored metadata, so nothing is requested from the server. If the server is unreachable the sidebar still shows the Downloads panel, so your offline library is always accessible.
+
+Downloads are stored in the plugin data folder by default (`Show Offline Downloads Folder` in the menu opens it). A different folder can be set in the preferences; the list of downloads (`manifest.json`) lives next to the files, so a folder on an external drive carries its library with it. Access tokens are never written to that folder.
+
+Downloading uses `curl` (present on every Mac) so multi-gigabyte files stream straight to disk with progress reporting; if `curl` is unavailable the plugin falls back to IINA's built-in downloader without progress.
+
 ## Supported URL Formats
 
 The plugin automatically detects and processes Jellyfin URLs in these formats:
@@ -183,6 +206,10 @@ Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 - **Open media in new IINA window**: Play media from browser in separate windows
 - **Enable autoplay**: Automatically queue the next episode when the current episode finishes, supporting cross-season playback
 
+### Offline Downloads
+
+- **Download folder**: Where offline downloads and their subtitles are stored. Leave empty for the plugin's data folder, or enter a path such as `~/Movies/Jellyfin Offline`.
+
 ### Menu Options
 
 The plugin adds these menu items to IINA:
@@ -190,18 +217,31 @@ The plugin adds these menu items to IINA:
 - **Show Jellyfin Browser** (`Cmd+Shift+J`): Open the media browser sidebar
 - **Download Jellyfin Subtitles**: Manually download subtitles for current media
 - **Set Jellyfin Title**: Manually set video title from Jellyfin metadata
+- **Show Offline Downloads Folder**: Reveal the folder with your offline downloads in Finder
 
 ## Development
 
 ### Development Scripts
 
-- `pnpm run check`: Run ESLint and Prettier checks
+- `pnpm run check`: Run ESLint, Prettier and the unit tests with coverage thresholds
 - `pnpm run lint`: Run ESLint
 - `pnpm run lint:fix`: Auto-fix ESLint issues
 - `pnpm run format`: Check Prettier formatting
 - `pnpm run format:fix`: Auto-fix Prettier formatting
+- `pnpm test`: Run the unit tests (Vitest)
+- `pnpm test:coverage`: Unit tests with coverage; the files listed in `vitest.config.mjs` must stay at 100%
+- `pnpm test:mutation`: Mutation tests (Stryker) over the same files; fails below the configured score
+- `pnpm test:e2e`: End-to-end tests (Playwright); run `pnpm test:e2e:install` once to get Chromium
 - `/Applications/IINA.app/Contents/MacOS/iina-plugin link .`: Link plugin to IINA for testing
 - `/Applications/IINA.app/Contents/MacOS/iina-plugin unlink .`: Unlink plugin from IINA
+
+### Testing
+
+Three layers of tests run in CI (`.github/workflows/tests.yml`):
+
+- **Unit tests** (`tests/unit`, Vitest): the plugin's main entry runs against a fake `iina` object, and the sidebar scripts run in jsdom against the real `index.html`. Coverage of the files touched by the offline downloads feature is enforced at 100% for statements, branches, functions and lines.
+- **Mutation tests** (`stryker.config.mjs`): Stryker mutates the same files and re-runs the unit tests; a mutant that survives points at behaviour no test checks.
+- **End-to-end tests** (`tests/e2e`, Playwright): the real sidebar page runs in Chromium and talks to the real plugin entry, which runs in the test process on a Node implementation of the IINA API (files on disk, real `curl`, `fetch`). A mock Jellyfin server serves the API and media. The scenarios download a movie and an episode, verify the bytes and subtitles on disk, play them with subtitles attached, cancel and retry downloads, and finally take the server offline and check that browsing, playing and removing downloads still work.
 
 ## Contributing
 

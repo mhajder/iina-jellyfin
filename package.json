@@ -12,18 +12,29 @@
   },
   "license": "GPL-3.0-only",
   "author": "Mateusz Hajder",
-  "type": "module",
   "scripts": {
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "lint": "eslint src/",
     "lint:fix": "eslint --fix src/",
-    "check": "eslint src/ && prettier --check ."
+    "check": "eslint src/ && prettier --check . && vitest run --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@vitest/coverage-istanbul": "^3.2.7",
     "eslint": "^10.8.1",
     "iina-plugin-definition": "^0.99.4",
-    "prettier": "^3.9.6"
+    "jsdom": "^30.0.1",
+    "prettier": "^3.9.6",
+    "vitest": "^3.2.7"
   }
 }

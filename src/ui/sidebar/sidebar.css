@@ -570,6 +570,144 @@ body {
   display: none;
 }
 
+/* Offline downloads */
+.downloads-btn {
+  position: relative;
+}
+
+.downloads-btn.active {
+  background: rgba(0, 164, 220, 0.3);
+  outline: 1px solid var(--jf-accent);
+}
+
+.downloads-badge {
+  display: inline-block;
+  min-width: 14px;
+  padding: 0 4px;
+  margin-left: 4px;
+  border-radius: 8px;
+  background: var(--jf-accent);
+  color: var(--jf-text);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.downloads-notice {
+  font-size: 11px;
+  color: #f59e0b;
+  margin-top: 6px;
+}
+
+.downloads-section {
+  display: none;
+}
+
+.downloads-summary {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--jf-text-muted);
+}
+
+.downloads-directory {
+  font-size: 10px;
+  color: var(--jf-text-muted);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.downloads-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.download-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--jf-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--jf-surface-alt);
+}
+
+.download-item.status-failed {
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.download-item.status-downloading {
+  border-color: rgba(0, 164, 220, 0.6);
+}
+
+.download-item.missing {
+  opacity: 0.75;
+}
+
+.download-icon {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #383838;
+  font-size: 16px;
+}
+
+.download-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.download-status {
+  font-size: 10px;
+  color: var(--jf-text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-failed .download-status {
+  color: #ef4444;
+}
+
+.download-progress {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: #2b2b2b;
+  overflow: hidden;
+}
+
+.download-progress-bar {
+  height: 100%;
+  background: var(--jf-accent);
+  transition: width 0.3s ease;
+}
+
+.offline-download-btn[data-offline-state='completed'] {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.offline-download-btn[data-offline-state='failed'],
+.offline-download-btn[data-offline-state='missing'] {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.offline-download-btn[data-offline-state='downloading'],
+.offline-download-btn[data-offline-state='queued'] {
+  background: rgba(0, 164, 220, 0.2);
+  color: var(--jf-text);
+}
+
 /* Music-specific styles */
 .music-item {
   display: flex;
