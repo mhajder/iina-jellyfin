@@ -48,6 +48,7 @@ jobs:
     name: Mutation tests (Stryker)
     runs-on: ubuntu-latest
     needs: unit
+    timeout-minutes: 60
 
     steps:
       - name: Checkout code
