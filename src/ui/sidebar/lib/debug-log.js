@@ -27,18 +27,6 @@ window.createSidebarDebugLogger = function createSidebarDebugLogger() {
   }
 
   function serializeDebugArg(arg) {
-    if (arg === null || arg === undefined) {
-      return String(arg);
-    }
-
-    if (typeof arg === 'string') {
-      return truncateDebugText(arg);
-    }
-
-    if (typeof arg === 'number' || typeof arg === 'boolean' || typeof arg === 'bigint') {
-      return String(arg);
-    }
-
     if (arg instanceof Error) {
       return `${arg.name}: ${arg.message}`;
     }
@@ -47,7 +35,7 @@ window.createSidebarDebugLogger = function createSidebarDebugLogger() {
       return `[Array(${arg.length})]`;
     }
 
-    if (typeof arg === 'object') {
+    if (arg && typeof arg === 'object') {
       const keys = Object.keys(arg);
       const preview = keys.slice(0, MAX_KEYS).reduce((acc, key) => {
         const value = arg[key];
@@ -77,6 +65,7 @@ window.createSidebarDebugLogger = function createSidebarDebugLogger() {
       return truncateDebugText(JSON.stringify(preview));
     }
 
+    // Primitives (and anything else) stringify directly
     return truncateDebugText(String(arg));
   }
 

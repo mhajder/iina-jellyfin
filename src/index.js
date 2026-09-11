@@ -233,17 +233,10 @@ function onFileLoaded(fileUrl) {
       debugLog('Auto-login from Jellyfin URLs disabled, not storing the URL credentials');
     }
 
-    // Start playback tracking for progress sync
-    if (preferences.get('sync_playback_progress')) {
-      debugLog(`Starting playback tracking for: ${jellyfinInfo.itemId}`);
-      startPlaybackTracking(reportServerBase, jellyfinInfo.itemId, reportApiKey);
-    }
-
-    // Set video title from metadata if enabled
-    if (preferences.get('set_video_title')) {
-      debugLog(`Setting video title from metadata for: ${jellyfinInfo.itemId}`);
-      setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
-    }
+    // Progress sync and the title lookup check their own preference and
+    // return early when disabled.
+    startPlaybackTracking(reportServerBase, jellyfinInfo.itemId, reportApiKey);
+    setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
 
     // Setup autoplay for TV episodes if enabled
     if (preferences.get('autoplay_next_episode')) {
@@ -351,13 +344,7 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     standaloneWindow.onMessage('store-session', (data) => {
       if (data && data.serverUrl && data.accessToken) {
-        const server = addOrUpdateServer({
-          serverUrl: data.serverUrl,
-          accessToken: data.accessToken,
-          serverName: data.serverName || '',
-          userId: data.userId || '',
-          username: data.username || '',
-        });
+        const server = addOrUpdateServer(data);
         if (server) {
           setActiveServerId(server.id);
           standaloneWindow.postMessage('servers-updated', {
@@ -722,13 +709,7 @@ event.on('iina.window-loaded', () => {
   // Handle session storage requests from sidebar (manual login)
   sidebar.onMessage('store-session', (data) => {
     if (data && data.serverUrl && data.accessToken) {
-      const server = addOrUpdateServer({
-        serverUrl: data.serverUrl,
-        accessToken: data.accessToken,
-        serverName: data.serverName || '',
-        userId: data.userId || '',
-        username: data.username || '',
-      });
+      const server = addOrUpdateServer(data);
       if (server) {
         setActiveServerId(server.id);
         // Send back updated server list

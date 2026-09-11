@@ -11,6 +11,8 @@ describe('subtitleExtensionForCodec', () => {
     ['ssa', 'ssa'],
     ['x-srt-custom', 'srt'],
     ['some-vtt-variant', 'vtt'],
+    ['SSA', 'ssa'],
+    ['srt', 'srt'],
     ['pgssub', 'srt'],
     ['', 'srt'],
     [null, 'srt'],

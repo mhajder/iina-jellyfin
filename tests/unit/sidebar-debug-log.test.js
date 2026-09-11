@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const modulePath = path.resolve(here, '../../src/ui/sidebar/lib/debug-log.js');
 
 async function createLogger() {
   vi.resetModules();
-  await import(/* @vite-ignore */ modulePath);
+  await import('../../src/ui/sidebar/lib/debug-log.js');
   return window.createSidebarDebugLogger();
 }
 
@@ -28,6 +23,10 @@ describe('sidebar debug logger', () => {
     debugLog('hidden');
     globalThis.iina = {};
     debugLog('still hidden');
+    globalThis.iina = null;
+    debugLog('null bridge');
+    globalThis.iina = { preferences: {} };
+    debugLog('no getter');
     globalThis.iina = { preferences: { get: () => false } };
     debugLog('off');
     expect(log).not.toHaveBeenCalled();
@@ -50,6 +49,14 @@ describe('sidebar debug logger', () => {
       'x-emby-token=[redacted]&b=1'
     );
     expect(debugLog.redactSecrets('accessToken: "shortpw"')).toBe('accessToken: "shortpw"');
+    // Query values that are not plain tokens are still redacted, up to the next separator
+    expect(debugLog.redactSecrets('?a=1&x-emby-token=se%cret&b=2 c')).toBe(
+      '?a=1&x-emby-token=[redacted]&b=2 c'
+    );
+    expect(debugLog.redactSecrets('url?api_key=se%cret"')).toBe('url?api_key=[redacted]"');
+    // Token fields may have whitespace around the separator
+    expect(debugLog.redactSecrets('accessToken : abcdefghij')).toBe('accessToken : [redacted]');
+    expect(debugLog.redactSecrets('Token = "abcdefgh1234"')).toBe('Token = "[redacted]"');
   });
 
   describe('serializeDebugArg', () => {
@@ -105,6 +112,8 @@ describe('sidebar debug logger', () => {
         __extraKeys: 2,
       });
       expect(serializeDebugArg({ a: 1 })).toBe('{"a":1}');
+      const eightKeys = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`k${i}`, i]));
+      expect(JSON.parse(serializeDebugArg(eightKeys))).toEqual(eightKeys);
     });
   });
 });

@@ -240,7 +240,7 @@ The plugin adds these menu items to IINA:
 Three layers of tests run in CI (`.github/workflows/tests.yml`):
 
 - **Unit tests** (`tests/unit`, Vitest): the plugin's main entry runs against a fake `iina` object, and the sidebar scripts run in jsdom against the real `index.html`. Coverage of the files touched by the offline downloads feature is enforced at 100% for statements, branches, functions and lines.
-- **Mutation tests** (`stryker.config.mjs`): Stryker mutates the same files and re-runs the unit tests; a mutant that survives points at behaviour no test checks.
+- **Mutation tests** (`stryker.config.mjs`): Stryker mutates the same files and re-runs the unit tests; a mutant that survives points at behaviour no test checks. Mutants inside debug log calls are ignored by a small local plugin (`tests/mutation/ignore-debug-logging.mjs`) since log wording is not behaviour. The HTML report lands in `reports/mutation/`.
 - **End-to-end tests** (`tests/e2e`, Playwright): the real sidebar page runs in Chromium and talks to the real plugin entry, which runs in the test process on a Node implementation of the IINA API (files on disk, real `curl`, `fetch`). A mock Jellyfin server serves the API and media. The scenarios download a movie and an episode, verify the bytes and subtitles on disk, play them with subtitles attached, cancel and retry downloads, and finally take the server offline and check that browsing, playing and removing downloads still work.
 
 ## Contributing

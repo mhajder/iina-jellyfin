@@ -385,9 +385,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     debounceSearch(term) {
-      if (this.searchTimeout) {
-        clearTimeout(this.searchTimeout);
-      }
+      clearTimeout(this.searchTimeout);
 
       this.searchTimeout = setTimeout(() => {
         this.search(term);
@@ -962,7 +960,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
     isEpisodeAvailable(episode) {
       try {
-        if (episode.LocationType && episode.LocationType === 'Virtual') {
+        if (episode.LocationType === 'Virtual') {
           debugLog(`Episode ${episode.Name} marked as Virtual (unavailable)`);
           return false;
         }

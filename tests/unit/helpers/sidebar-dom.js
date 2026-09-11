@@ -52,15 +52,18 @@ export async function bootSidebar({ bridge, scripts } = {}) {
   }
 
   vi.resetModules();
-  const files = scripts || [
-    'lib/debug-log.js',
-    'lib/media-methods.js',
-    'lib/auth-server-methods.js',
-    'lib/offline-methods.js',
-    'sidebar.js',
-  ];
-  for (const file of files) {
-    await import(/* @vite-ignore */ path.join(sidebarDir, file));
+  // Literal import paths keep Vite's module graph aware of which sources these
+  // tests exercise (Stryker relies on it to pick the related test files).
+  const loaders = {
+    'lib/debug-log.js': () => import('../../../src/ui/sidebar/lib/debug-log.js'),
+    'lib/media-methods.js': () => import('../../../src/ui/sidebar/lib/media-methods.js'),
+    'lib/auth-server-methods.js': () =>
+      import('../../../src/ui/sidebar/lib/auth-server-methods.js'),
+    'lib/offline-methods.js': () => import('../../../src/ui/sidebar/lib/offline-methods.js'),
+    'sidebar.js': () => import('../../../src/ui/sidebar/sidebar.js'),
+  };
+  for (const file of scripts || Object.keys(loaders)) {
+    await loaders[file]();
   }
   return window.jellyfinSidebar;
 }

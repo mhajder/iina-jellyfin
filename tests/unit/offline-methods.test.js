@@ -11,6 +11,19 @@ import {
 
 const byId = (id) => document.getElementById(id);
 
+/** Text that ended up directly inside container elements instead of in a child. */
+function strayText(root) {
+  const containers = [
+    root,
+    ...root.querySelectorAll('.download-item, .download-body, .media-actions'),
+  ];
+  return containers
+    .flatMap((el) => Array.from(el.childNodes))
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent.trim())
+    .join('');
+}
+
 const MOVIE = { Id: 'movie-1', Type: 'Movie', Name: 'Big Film', ProductionYear: 2020 };
 const EPISODE = {
   Id: 'ep-1',
@@ -104,18 +117,17 @@ describe('sidebar offline methods', () => {
 
       bridge.deliver('offline-downloads', { downloads: 'junk' });
       expect(sidebar.offlineDownloads).toEqual([]);
+      expect(byId('downloadsBadge').textContent).toBe('');
 
-      sidebar.offlineDownloads = undefined;
-      sidebar.updateDownloadsBadge();
-      expect(byId('downloadsBadge').style.display).toBe('none');
+      bridge.deliver('offline-downloads', { downloads: [entry(), entry({ itemId: 'b' })] });
+      expect(byId('downloadsList').querySelectorAll('.download-item')).toHaveLength(2);
+      expect(byId('downloadsBadge').textContent).toBe('');
     });
 
     it('finds entries by id', () => {
       sidebar.offlineDownloads = [entry()];
       expect(sidebar.getOfflineEntry('movie-1').title).toBe('Big Film (2020)');
       expect(sidebar.getOfflineEntry('nope')).toBeNull();
-      sidebar.offlineDownloads = undefined;
-      expect(sidebar.getOfflineEntry('movie-1')).toBeNull();
     });
   });
 
@@ -130,35 +142,41 @@ describe('sidebar offline methods', () => {
     });
 
     it('describes every entry state', () => {
-      expect(sidebar.describeDownloadButton(null)).toMatchObject({
+      const idle = {
         label: '⬇ Offline',
         disabled: false,
         state: 'idle',
-      });
-      expect(sidebar.describeDownloadButton(entry({ status: 'cancelled' })).state).toBe('idle');
-      expect(sidebar.describeDownloadButton(entry({ status: 'queued' }))).toMatchObject({
+        title: 'Download for offline playback',
+      };
+      expect(sidebar.describeDownloadButton(null)).toEqual(idle);
+      expect(sidebar.describeDownloadButton(entry({ status: 'cancelled' }))).toEqual(idle);
+      expect(sidebar.describeDownloadButton(entry({ status: 'queued' }))).toEqual({
         label: 'Queued…',
         disabled: true,
         state: 'queued',
+        title: 'Waiting to download',
       });
-      expect(
-        sidebar.describeDownloadButton(entry({ status: 'downloading', progress: 7 }))
-      ).toMatchObject({ label: '7%', disabled: true, state: 'downloading' });
+      expect(sidebar.describeDownloadButton(entry({ status: 'downloading', progress: 7 }))).toEqual(
+        { label: '7%', disabled: true, state: 'downloading', title: 'Downloading' }
+      );
       expect(
         sidebar.describeDownloadButton(entry({ status: 'downloading', progress: undefined })).label
       ).toBe('0%');
-      expect(sidebar.describeDownloadButton(entry())).toMatchObject({
+      expect(sidebar.describeDownloadButton(entry())).toEqual({
         label: '▶ Offline',
         disabled: false,
         state: 'completed',
+        title: 'Play the offline copy',
       });
-      expect(sidebar.describeDownloadButton(entry({ fileMissing: true }))).toMatchObject({
+      expect(sidebar.describeDownloadButton(entry({ fileMissing: true }))).toEqual({
         label: 'Re-download',
+        disabled: false,
         state: 'missing',
+        title: 'The downloaded file is missing',
       });
       expect(
         sidebar.describeDownloadButton(entry({ status: 'failed', error: 'HTTP 500' }))
-      ).toMatchObject({ label: 'Retry ⬇', state: 'failed', title: 'HTTP 500' });
+      ).toEqual({ label: 'Retry ⬇', disabled: false, state: 'failed', title: 'HTTP 500' });
       expect(sidebar.describeDownloadButton(entry({ status: 'failed' })).title).toBe(
         'Download failed'
       );
@@ -366,6 +384,7 @@ describe('sidebar offline methods', () => {
       byId('loginSection').style.display = 'none';
       byId('episodeSection').style.display = 'block';
       bridge.postMessage.mockClear();
+      window.scrollTo.mockClear();
 
       click(byId('downloadsBtn'));
 
@@ -374,7 +393,8 @@ describe('sidebar offline methods', () => {
       expect(byId('episodeSection').style.display).toBe('none');
       expect(byId('downloadsBtn').classList.contains('active')).toBe(true);
       expect(bridge.postMessage).toHaveBeenCalledWith('get-offline-downloads', undefined);
-      expect(window.scrollTo).toHaveBeenCalled();
+      expect(window.scrollTo).toHaveBeenCalledTimes(1);
+      expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
 
       // Showing twice is a no-op
       sidebar.showDownloadsPanel();
@@ -442,6 +462,11 @@ describe('sidebar offline methods', () => {
           entry({ type: 'Episode', seriesName: 'Show', seasonNumber: null, episodeNumber: 2 })
         )
       ).toBe('Show');
+      expect(
+        sidebar.describeDownloadSubtitle(
+          entry({ type: 'Episode', seriesName: null, seasonNumber: 1, episodeNumber: 2 })
+        )
+      ).toBe('S1E2');
       expect(sidebar.describeDownloadSubtitle(entry())).toBe('Movie · 2020');
       expect(sidebar.describeDownloadSubtitle(entry({ productionYear: null }))).toBe('Movie');
       expect(sidebar.describeDownloadSubtitle(entry({ type: 'Audio' }))).toBe('Song');
@@ -493,6 +518,7 @@ describe('sidebar offline methods', () => {
       sidebar.offlineDownloads = [
         entry({ itemId: 'old', createdAt: 1 }),
         entry({ itemId: 'new', createdAt: 5 }),
+        entry({ itemId: 'mid', createdAt: 3, type: 'Audio' }),
         entry({ itemId: 'active', status: 'downloading', progress: 150, createdAt: 2 }),
         entry({ itemId: 'neg', status: 'downloading', progress: -3, createdAt: 3 }),
         entry({ itemId: 'nodate', createdAt: undefined, type: 'Unknown' }),
@@ -500,13 +526,26 @@ describe('sidebar offline methods', () => {
         entry({ itemId: 'noprogress', status: 'downloading', progress: undefined, createdAt: 0 }),
       ];
 
+      const inputOrder = sidebar.offlineDownloads.map((e) => e.itemId);
       sidebar.renderDownloadsList();
+      // Sorting works on a copy
+      expect(sidebar.offlineDownloads.map((e) => e.itemId)).toEqual(inputOrder);
 
       const ids = Array.from(byId('downloadsList').querySelectorAll('.download-item')).map(
         (el) => el.dataset.downloadId
       );
-      expect(ids).toEqual(['neg', 'active', 'noprogress', 'new', 'old', 'nodate', 'nodate2']);
-      expect(byId('downloadsSummary').textContent).toBe('3 ready · 3 active');
+      expect(ids).toEqual([
+        'neg',
+        'active',
+        'noprogress',
+        'new',
+        'mid',
+        'old',
+        'nodate',
+        'nodate2',
+      ]);
+      expect(byId('downloadsSummary').textContent).toBe('4 ready · 3 active');
+      expect(strayText(byId('downloadsList'))).toBe('');
       const bars = byId('downloadsList').querySelectorAll('.download-progress-bar');
       expect(Array.from(bars).map((bar) => bar.style.width)).toEqual(['0%', '100%', '0%']);
       expect(
@@ -537,9 +576,10 @@ describe('sidebar offline methods', () => {
         'Fallback Title'
       );
 
-      sidebar.offlineDownloads = undefined;
+      sidebar.offlineDownloads = [];
       sidebar.renderDownloadsList();
       expect(byId('downloadsList').textContent).toContain('No downloads yet');
+      expect(byId('downloadsSummary').textContent).toBe('');
     });
 
     it('wires the entry buttons to the plugin messages', () => {
@@ -589,7 +629,13 @@ describe('sidebar offline methods', () => {
       click(button('cancel'));
       expect(bridge.postMessage).toHaveBeenCalledWith('offline-cancel', { itemId: 'movie-1' });
 
-      sidebar.handleDownloadEntryAction('unknown', entry(), document.createElement('button'));
+      const stray = document.createElement('button');
+      stray.textContent = 'Nothing';
+      bridge.postMessage.mockClear();
+      sidebar.handleDownloadEntryAction('unknown', entry(), stray);
+      expect(stray.textContent).toBe('Nothing');
+      expect(stray.dataset.confirm).toBeUndefined();
+      expect(bridge.postMessage).not.toHaveBeenCalled();
     });
   });
 

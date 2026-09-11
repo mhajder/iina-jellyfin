@@ -93,11 +93,17 @@ describe('plugin main entry', () => {
 
     it('works without a global entry', async () => {
       const fake = await loadPlugin({
+        preferences: { open_in_new_window: true },
         mutate: (f) => {
           f.iina.global = undefined;
         },
       });
       expect(fake.menuItems).toHaveLength(4);
+
+      fake.emit('iina.window-loaded');
+      fake.iina.sidebar.emit('play-media', { streamUrl: STREAM_URL, title: 'Film' });
+      expect(fake.iina.core.open).toHaveBeenCalledWith(STREAM_URL);
+      expect(fake.iina.core.osd).not.toHaveBeenCalledWith('Failed to open media');
     });
   });
 
@@ -190,13 +196,11 @@ describe('plugin main entry', () => {
         'Jellyfin Browser opened in standalone window\nPlease login to access your media'
       );
       vi.advanceTimersByTime(1000);
-      expect(fake.iina.standaloneWindow.postMessage).not.toHaveBeenCalledWith(
-        'session-available',
-        expect.anything()
-      );
+      const names = fake.iina.standaloneWindow.postMessage.mock.calls.map((call) => call[0]);
+      expect(names).toEqual(['client-identity', 'servers-list']);
     });
 
-    it('falls back when sidebar.show throws or the window state cannot be read', async () => {
+    it('falls back when sidebar.show throws', async () => {
       const fake = await loadPlugin();
       fake.iina.sidebar.show.mockImplementation(() => {
         throw new Error('no sidebar');
@@ -204,7 +208,10 @@ describe('plugin main entry', () => {
       fake.menuItem('Show Jellyfin Browser').callback();
       expect(fake.iina.standaloneWindow.open).toHaveBeenCalledTimes(1);
       expect(logged(fake)).toContain('DEBUG: Direct sidebar.show() failed: no sidebar');
+    });
 
+    it('falls back when the window state cannot be read', async () => {
+      const fake = await loadPlugin();
       Object.defineProperty(fake.iina.core, 'window', {
         get() {
           throw new Error('gone');
@@ -212,7 +219,8 @@ describe('plugin main entry', () => {
       });
       fake.menuItem('Show Jellyfin Browser').callback();
       expect(logged(fake)).toContain('DEBUG: Could not read window state: gone');
-      expect(fake.iina.standaloneWindow.open).toHaveBeenCalledTimes(2);
+      expect(fake.iina.sidebar.show).not.toHaveBeenCalled();
+      expect(fake.iina.standaloneWindow.open).toHaveBeenCalledTimes(1);
     });
 
     it('logs when the standalone window cannot be created', async () => {
@@ -280,7 +288,10 @@ describe('plugin main entry', () => {
       const win = fake.iina.standaloneWindow;
 
       win.emit('store-session', { serverUrl: SERVER });
+      win.emit('store-session', { accessToken: 'tok' });
+      win.emit('store-session', null);
       expect(win.postMessage).not.toHaveBeenCalledWith('servers-updated', expect.anything());
+      expect(fake.prefs.get('jellyfin_servers')).toBeUndefined();
 
       win.emit('store-session', {
         serverUrl: `${SERVER}/`,
@@ -297,6 +308,8 @@ describe('plugin main entry', () => {
         activeServerId: stored[0].id,
       });
 
+      // Server ids derive from Date.now(); make sure the second one differs
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
       win.emit('store-session', { serverUrl: 'http://second', accessToken: 'tok2' });
       const both = JSON.parse(fake.prefs.get('jellyfin_servers'));
       expect(both).toHaveLength(2);
@@ -305,16 +318,24 @@ describe('plugin main entry', () => {
         userId: '',
         username: '',
       });
+      // The server just stored becomes the active one
+      expect(fake.prefs.get('jellyfin_active_server_id')).toBe(both[1].id);
 
       win.emit('switch-server', { serverId: stored[0].id });
       expect(fake.prefs.get('jellyfin_active_server_id')).toBe(stored[0].id);
+      win.postMessage.mockClear();
       win.emit('switch-server', {});
+      win.emit('switch-server', null);
       win.emit('switch-server', { serverId: 'missing' });
+      expect(win.postMessage).not.toHaveBeenCalled();
 
       win.emit('remove-server', {});
+      win.emit('remove-server', null);
+      expect(win.postMessage).not.toHaveBeenCalled();
       expect(JSON.parse(fake.prefs.get('jellyfin_servers'))).toHaveLength(2);
       win.emit('remove-server', { serverId: both[1].id });
       expect(JSON.parse(fake.prefs.get('jellyfin_servers'))).toHaveLength(1);
+      expect(win.postMessage).toHaveBeenCalledWith('servers-updated', expect.anything());
 
       win.emit('clear-session');
       expect(JSON.parse(fake.prefs.get('jellyfin_servers'))).toEqual([]);
@@ -404,9 +425,18 @@ describe('plugin main entry', () => {
       expect(sidebar.postMessage).toHaveBeenCalledWith('session-data', null);
 
       sidebar.emit('store-session', { accessToken: 'only-token' });
+      sidebar.emit('store-session', { serverUrl: SERVER });
+      sidebar.emit('store-session', null);
+      expect(fake.prefs.get('jellyfin_servers')).toBeUndefined();
       sidebar.emit('store-session', { serverUrl: SERVER, accessToken: 'tok', userId: 'u1' });
       const servers = JSON.parse(fake.prefs.get('jellyfin_servers'));
       expect(servers).toHaveLength(1);
+      expect(servers[0]).toMatchObject({ serverName: SERVER, userId: 'u1', username: '' });
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+      sidebar.emit('store-session', { serverUrl: 'http://second', accessToken: 'tok2' });
+      const second = JSON.parse(fake.prefs.get('jellyfin_servers'))[1];
+      expect(fake.prefs.get('jellyfin_active_server_id')).toBe(second.id);
+      sidebar.emit('remove-server', { serverId: second.id });
       expect(sidebar.postMessage).toHaveBeenCalledWith('servers-updated', {
         servers: [expect.objectContaining({ id: servers[0].id })],
         activeServerId: servers[0].id,
@@ -423,9 +453,13 @@ describe('plugin main entry', () => {
         'server-switched',
         expect.objectContaining({ activeServerId: servers[0].id })
       );
+      sidebar.postMessage.mockClear();
       sidebar.emit('switch-server', null);
-
+      sidebar.emit('switch-server', {});
       sidebar.emit('remove-server', null);
+      sidebar.emit('remove-server', {});
+      expect(sidebar.postMessage).not.toHaveBeenCalled();
+
       sidebar.emit('remove-server', { serverId: servers[0].id });
       expect(JSON.parse(fake.prefs.get('jellyfin_servers'))).toEqual([]);
 
@@ -615,10 +649,31 @@ describe('plugin main entry', () => {
           set_video_title: true,
           autoplay_next_episode: true,
           auto_download_enabled: true,
+          preferred_languages: 'eng',
         },
       });
       routeHttp(fake.iina, [
-        ['/PlaybackInfo', { PlaySessionId: 'ps', MediaSources: [{ Id: 'src', MediaStreams: [] }] }],
+        [
+          '/PlaybackInfo',
+          {
+            PlaySessionId: 'ps',
+            MediaSources: [
+              {
+                Id: 'src',
+                MediaStreams: [
+                  {
+                    Type: 'Subtitle',
+                    IsTextSubtitleStream: true,
+                    IsExternal: true,
+                    Index: 3,
+                    Language: 'eng',
+                    Codec: 'subrip',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
         [`/Items/${ITEM}?`, { Name: 'Film', Type: 'Movie', ProductionYear: 2020, UserData: {} }],
       ]);
 
@@ -626,6 +681,11 @@ describe('plugin main entry', () => {
       await flushPromises(10);
 
       expect(fake.iina.mpv.set).toHaveBeenCalledWith('force-media-title', 'Film (2020)');
+      expect(fake.iina.http.download).toHaveBeenCalledWith(
+        `${SERVER}/Videos/${ITEM}/src/Subtitles/3/stream.srt?api_key=${KEY}`,
+        expect.stringMatching(/^@tmp\//)
+      );
+      expect(fake.iina.core.subtitle.loadTrack).toHaveBeenCalledTimes(1);
       expect(fake.iina.http.post).toHaveBeenCalledWith(
         `${SERVER}/Sessions/Playing?api_key=${KEY}`,
         expect.objectContaining({ data: expect.objectContaining({ ItemId: ITEM }) })
@@ -669,6 +729,25 @@ describe('plugin main entry', () => {
         );
         // The URL credentials are not stored in this mode
         expect(JSON.parse(fake.prefs.get('jellyfin_servers'))).toHaveLength(1);
+      });
+
+      it('treats a server behind a sub path as the same host', async () => {
+        const fake = await loadPlugin({
+          preferences: {
+            use_connected_account: true,
+            sync_playback_progress: true,
+            ...storedServers([{ ...session[0], serverUrl: 'http://jf.local:8096/jellyfin' }]),
+          },
+        });
+        routeHttp(fake.iina, [['/PlaybackInfo', { MediaSources: [] }]]);
+
+        fake.emit('iina.file-loaded', STREAM_URL);
+        await flushPromises(10);
+
+        expect(fake.iina.http.post).toHaveBeenCalledWith(
+          'http://jf.local:8096/jellyfin/Sessions/Playing?api_key=account-token',
+          expect.anything()
+        );
       });
 
       it('names the server when the account has no username', async () => {
@@ -882,6 +961,19 @@ describe('plugin main entry', () => {
       expect(logged(fake)).toContain('DEBUG: Queued playlist items are stale, not appending them');
     });
 
+    it('keeps a queue that is exactly at its time limit', async () => {
+      const fake = await loadPlugin();
+      fake.emit('iina.window-loaded');
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(now);
+      fake.iina.sidebar.emit('play-media-list', { items });
+
+      Date.now.mockReturnValue(now + 60000);
+      fake.emit('iina.file-loaded', items[0].streamUrl);
+
+      expect(fake.iina.mpv.command).toHaveBeenCalledWith('loadfile', expect.anything());
+    });
+
     it('appends regardless of the file when the first item id is unknown', async () => {
       const fake = await loadPlugin();
       fake.emit('iina.window-loaded');
@@ -980,6 +1072,32 @@ describe('plugin main entry', () => {
       await flushPromises();
 
       expect(logged(fake)).toContain('DEBUG: Ignoring replacement guard set 20000ms ago (expired)');
+      expect(fake.iina.http.post).toHaveBeenCalledWith(
+        expect.stringContaining('/Stopped'),
+        expect.anything()
+      );
+    });
+
+    it('honours the guard right at its time limit', async () => {
+      const fake = await loadWithSession();
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(now);
+      fake.iina.sidebar.emit('play-media', { streamUrl: STREAM_URL, title: 'Next' });
+
+      Date.now.mockReturnValue(now + 10000);
+      fake.emit('mpv.end-file');
+      await flushPromises();
+
+      expect(fake.iina.http.post).not.toHaveBeenCalledWith(
+        expect.stringContaining('/Stopped'),
+        expect.anything()
+      );
+    });
+
+    it('reports stop for the previous file when a new one loads', async () => {
+      const fake = await loadWithSession();
+      fake.emit('iina.file-loaded', '/Users/me/other.mkv');
+      await flushPromises();
       expect(fake.iina.http.post).toHaveBeenCalledWith(
         expect.stringContaining('/Stopped'),
         expect.anything()

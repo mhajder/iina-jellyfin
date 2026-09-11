@@ -13,6 +13,8 @@ describe('parseCurlProgress', () => {
     expect(parseCurlProgress('#####  12.3%\r######  45.0%')).toBe(45);
     expect(parseCurlProgress('100.0%')).toBe(100);
     expect(parseCurlProgress('0.0%')).toBe(0);
+    expect(parseCurlProgress('12.34%')).toBe(12.34);
+    expect(parseCurlProgress('7%')).toBe(7);
   });
 
   it('ignores values above 100', () => {
@@ -137,7 +139,7 @@ describe('createDownloadTransport', () => {
     it('fails with the stderr tail when curl exits non-zero', async () => {
       const utils = createUtils();
       utils.exec.mockImplementation(async (command, args, cwd, stdoutHook, stderrHook) => {
-        stderrHook('curl: (22) The requested URL returned error: 401');
+        stderrHook('curl: (22) The requested URL returned error: 401\n');
         return { status: 22, stdout: '', stderr: '' };
       });
       const transport = createDownloadTransport({ utils, http: {}, log: vi.fn() });

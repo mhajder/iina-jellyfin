@@ -6,7 +6,8 @@ import { coveredFiles } from './vitest.config.mjs';
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   testRunner: 'vitest',
-  plugins: ['@stryker-mutator/vitest-runner'],
+  plugins: ['@stryker-mutator/vitest-runner', './tests/mutation/ignore-debug-logging.mjs'],
+  ignorers: ['debug-logging'],
   vitest: {
     configFile: 'vitest.config.mjs',
   },

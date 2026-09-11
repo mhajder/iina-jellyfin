@@ -5,14 +5,23 @@
  * subtitles converted to whatever extension the stream URL asks for, so the
  * mapping only has to pick something mpv recognises.
  */
+const EXTENSION_BY_CODEC = {
+  subrip: 'srt',
+  srt: 'srt',
+  webvtt: 'vtt',
+  vtt: 'vtt',
+  ass: 'ass',
+  ssa: 'ssa',
+};
+
 function subtitleExtensionForCodec(codec) {
-  const normalized = String(codec || '').toLowerCase();
-  if (normalized === 'subrip') return 'srt';
-  if (normalized === 'webvtt' || normalized === 'vtt') return 'vtt';
-  if (normalized === 'ass') return 'ass';
-  if (normalized === 'ssa') return 'ssa';
-  if (normalized.includes('srt')) return 'srt';
-  if (normalized.includes('vtt')) return 'vtt';
+  const normalized = String(codec).toLowerCase();
+  if (EXTENSION_BY_CODEC[normalized]) {
+    return EXTENSION_BY_CODEC[normalized];
+  }
+  if (normalized.includes('vtt')) {
+    return 'vtt';
+  }
   return 'srt';
 }
 

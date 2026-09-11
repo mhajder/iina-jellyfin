@@ -170,6 +170,15 @@ describe('pure helpers', () => {
       expect(buildDisplayTitle({ ...EPISODE, SeriesName: undefined })).toBe('Pilot');
     });
 
+    it('applies the episode, movie and song formats only to their own types', () => {
+      expect(buildDisplayTitle({ ...MOVIE, SeriesName: 'Not a show' })).toBe('Big Film (2020)');
+      expect(buildDisplayTitle({ ...SONG, ProductionYear: 1999 })).toBe('Band - Tune');
+      expect(buildDisplayTitle({ Type: 'Movie', Name: 'X', AlbumArtist: 'Y' })).toBe('X');
+      expect(
+        buildDisplayTitle({ Type: 'Series', Name: 'S', SeriesName: 'S', ProductionYear: 1 })
+      ).toBe('S');
+    });
+
     it('formats movies with and without a year', () => {
       expect(buildDisplayTitle(MOVIE)).toBe('Big Film (2020)');
       expect(buildDisplayTitle({ ...MOVIE, ProductionYear: undefined })).toBe('Big Film');
@@ -215,6 +224,11 @@ describe('pure helpers', () => {
 
     it('keeps malformed encodings as they are', () => {
       expect(normalizeLoadedPath('/Users/me/100%.mkv')).toBe('/Users/me/100%.mkv');
+    });
+
+    it('only strips the scheme at the start of the value', () => {
+      expect(normalizeLoadedPath('/mnt/file://weird/x.mkv')).toBe('/mnt/file://weird/x.mkv');
+      expect(normalizeLoadedPath('file://localhost')).toBe('');
     });
 
     it('handles empty values', () => {
@@ -423,6 +437,9 @@ describe('createOfflineDownloadManager', () => {
         `${SERVER}/Videos/movie-1/src-1/Subtitles/3/stream.srt`
       );
       expect(env.transport.download.mock.calls[1][1]).toBe('@data/offline/movie-1_sub_3_eng.srt');
+      expect(env.transport.download.mock.calls[1][2]).toEqual({
+        headers: { Authorization: `MediaBrowser Token="${TOKEN}"` },
+      });
 
       expect(env.core.osd).toHaveBeenCalledWith('Downloaded for offline: Big Film (2020)');
       expect(env.manifest()).toHaveLength(1);
@@ -576,6 +593,17 @@ describe('createOfflineDownloadManager', () => {
       gate.resolve();
       await waitFor(() => env.entry('song-1')?.status === 'completed');
       expect(env.entry('movie-1').status).toBe('completed');
+    });
+
+    it('starts over after a failure', async () => {
+      env.fetchPlaybackInfo.mockRejectedValueOnce(new Error('first attempt'));
+      await env.manager.startDownload(request(MOVIE));
+      await waitFor(() => env.entry('movie-1')?.status === 'failed');
+
+      await env.manager.startDownload(request(MOVIE));
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+      expect(env.core.osd).not.toHaveBeenCalledWith('Already downloaded: Big Film (2020)');
+      expect(env.manager.listDownloads()).toHaveLength(1);
     });
 
     it('starts over when the completed file went missing', async () => {
@@ -756,6 +784,7 @@ describe('createOfflineDownloadManager', () => {
 
       await expect(env.manager.cancelDownload('movie-1')).resolves.toBe(true);
       expect(env.entry('movie-1').status).toBe('cancelled');
+      expect(env.lastSnapshot().downloads[0].status).toBe('cancelled');
       expect(env.transport.cancel).toHaveBeenCalledWith('@data/offline/movie-1.mkv');
 
       gate.reject(new Error('killed'));
@@ -873,6 +902,18 @@ describe('createOfflineDownloadManager', () => {
       expect(env.manager.listDownloads()).toEqual([]);
     });
 
+    it('removes an entry that is being cancelled by deleting its files', async () => {
+      env.files.set(
+        '@data/offline/manifest.json',
+        JSON.stringify([
+          { itemId: 'c', title: 'C', status: 'cancelled', mediaPath: '@data/offline/c.mkv' },
+        ])
+      );
+      env.files.set('@data/offline/c.mkv', 'x');
+      await expect(env.manager.removeDownload('c')).resolves.toBe(true);
+      expect(env.files.has('@data/offline/c.mkv')).toBe(false);
+    });
+
     it('removes failed entries without files', async () => {
       env.fetchPlaybackInfo.mockRejectedValue(new Error('nope'));
       await env.manager.startDownload(request(MOVIE));
@@ -958,6 +999,12 @@ describe('createOfflineDownloadManager', () => {
     it('refuses without any credentials', async () => {
       await failedMovie();
       env.loadStoredServers.mockReturnValue(null);
+      await expect(env.manager.retryDownload({ itemId: 'movie-1' })).resolves.toBe(false);
+
+      env.loadStoredServers.mockReturnValue([
+        { serverUrl: 'http://elsewhere', accessToken: 'x', userId: 'u' },
+        { serverUrl: 'http://elsewhere', accessToken: 'y' },
+      ]);
       await expect(env.manager.retryDownload({ itemId: 'movie-1' })).resolves.toBe(false);
 
       env.loadStoredServers.mockReturnValue([{ serverUrl: SERVER, userId: 'u' }]);
@@ -1053,6 +1100,9 @@ describe('createOfflineDownloadManager', () => {
       expect(env.manager.handleFileLoaded('')).toBe(false);
       expect(env.manager.handleFileLoaded(undefined)).toBe(false);
       expect(env.mpv.set).not.toHaveBeenCalled();
+      // Remote urls are never looked up in the manifest, even if a path matched
+      env.utils.resolvePath.mockReturnValue('http://jf.local/Videos/movie-1/stream');
+      expect(env.manager.handleFileLoaded('http://jf.local/Videos/movie-1/stream')).toBe(false);
     });
 
     it('ignores local files that are not downloads', async () => {

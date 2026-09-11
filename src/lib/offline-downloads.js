@@ -56,7 +56,6 @@ function buildDisplayTitle(item) {
 function pickContainer(source, itemType) {
   const reported = String((source && source.Container) || '')
     .split(',')[0]
-    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
   if (reported) return reported;
@@ -69,10 +68,7 @@ function pickContainer(source, itemType) {
  * percent-encoded file:// URLs.
  */
 function normalizeLoadedPath(fileUrl) {
-  let path = String(fileUrl || '');
-  if (/^file:\/\//i.test(path)) {
-    path = path.replace(/^file:\/\/(localhost)?/i, '');
-  }
+  const path = String(fileUrl || '').replace(/^file:\/\/(localhost)?/i, '');
   try {
     return decodeURIComponent(path);
   } catch {
@@ -94,7 +90,7 @@ function createOfflineDownloadManager({
   openMedia,
   log,
 }) {
-  let entries = null;
+  let entries = [];
   let loadedFromDirectory = null;
   let activeItemId = null;
   // Access tokens for queued downloads live in memory only; the manifest on
@@ -124,12 +120,12 @@ function createOfflineDownloadManager({
       if (!file.exists(path)) {
         return [];
       }
-      const parsed = JSON.parse(file.read(path) || '[]');
+      const parsed = JSON.parse(file.read(path));
       if (!Array.isArray(parsed)) {
         log('Offline manifest is not a list, ignoring it');
         return [];
       }
-      return parsed.filter((entry) => entry && typeof entry === 'object' && entry.itemId);
+      return parsed.filter((entry) => entry && entry.itemId);
     } catch (error) {
       log(`Could not read offline manifest: ${error.message}`);
       return [];
@@ -138,7 +134,7 @@ function createOfflineDownloadManager({
 
   function getEntries() {
     const directory = getDirectory();
-    if (entries === null || loadedFromDirectory !== directory) {
+    if (loadedFromDirectory !== directory) {
       entries = readManifest();
       loadedFromDirectory = directory;
       // A download that was still running when IINA quit cannot be resumed.
@@ -562,8 +558,7 @@ function createOfflineDownloadManager({
       (candidate) =>
         candidate.status === STATUS.COMPLETED &&
         candidate.mediaPath &&
-        (candidate.mediaAbsolutePath === loadedPath ||
-          utils.resolvePath(candidate.mediaPath) === loadedPath)
+        utils.resolvePath(candidate.mediaPath) === loadedPath
     );
     if (!entry) {
       return false;

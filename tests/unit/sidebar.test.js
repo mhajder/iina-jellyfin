@@ -49,7 +49,7 @@ describe('JellyfinSidebar bootstrap', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const sidebar = await bootSidebar({ bridge });
     vi.resetModules();
-    await import(/* @vite-ignore */ '../../src/ui/sidebar/sidebar.js');
+    await import('../../src/ui/sidebar/sidebar.js');
     expect(window.jellyfinSidebar).toBe(sidebar);
     expect(log).toHaveBeenCalledWith('DEBUG: Jellyfin sidebar initialized');
     expect(log).toHaveBeenCalledWith('DEBUG: Jellyfin sidebar already initialized');

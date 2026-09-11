@@ -12,6 +12,34 @@ import {
 const byId = (id) => document.getElementById(id);
 const BASE = 'http://jf.local:8096';
 
+/** Text that ended up directly inside row containers instead of in a child element. */
+function strayText(root) {
+  const containers = [
+    root,
+    ...root.querySelectorAll(
+      '.media-item, .music-item, .episode-item, .track-item, .list-body, .media-actions, .ep-body, .track-body'
+    ),
+  ];
+  return containers
+    .flatMap((el) => Array.from(el.childNodes))
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent.trim())
+    .join('');
+}
+
+/** Every request carries the token header and the user id. */
+function expectAuthed(fetchMock, index = 0) {
+  const [url, options] = fetchMock.mock.calls[index];
+  expect(options.headers).toEqual({ 'X-Emby-Token': 'tok' });
+  const parsed = new URL(url);
+  expect(parsed.searchParams.get('userId') || parsed.searchParams.get('UserId')).toBe('user-1');
+  return parsed;
+}
+
+function neverResolvingFetch() {
+  globalThis.fetch = vi.fn(() => new Promise(() => {}));
+}
+
 const MOVIE = {
   Id: 'movie-1',
   Type: 'Movie',
@@ -95,9 +123,15 @@ describe('sidebar media methods', () => {
       await flushPromises();
 
       expect(byId('mainContent').style.display).toBe('block');
+      expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
       expect(fetchMock.mock.calls[0][0]).toBe(
         `${BASE}/Genres?userId=user-1&Recursive=true&IncludeItemTypes=Movie%2CSeries`
       );
+      expectAuthed(fetchMock, 0);
+      expect(fetchMock.mock.calls[1][0]).toBe(
+        `${BASE}/MusicGenres?userId=user-1&IncludeItemTypes=MusicAlbum%2CAudio`
+      );
+      expectAuthed(fetchMock, 1);
       expect(byId('moviesGenreSelect').options).toHaveLength(3);
       expect(byId('seriesGenreSelect').options[2].textContent).toBe('A<b>');
       expect(byId('musicGenreSelect').options).toHaveLength(2);
@@ -122,6 +156,10 @@ describe('sidebar media methods', () => {
 
       sidebar.currentUser = null;
       const fetchMock = mockFetch([]);
+      await sidebar.loadGenres();
+      await sidebar.loadMusicGenres();
+      connect(sidebar);
+      sidebar.currentServer = null;
       await sidebar.loadGenres();
       await sidebar.loadMusicGenres();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -153,7 +191,12 @@ describe('sidebar media methods', () => {
       expect(byId('moviesFilterPanel').style.display).toBe('none');
       expect(byId('homeTab').classList.contains('active')).toBe(true);
       expect(byId('moviesTab').classList.contains('active')).toBe(false);
+      const activeButtons = document.querySelectorAll('.tab-button.active');
+      expect(activeButtons).toHaveLength(1);
+      expect(activeButtons[0].dataset.tab).toBe('home');
+      expect(document.querySelectorAll('.tab-content.active')).toHaveLength(1);
       expect(sidebar.selectedItem).toBeNull();
+      expect(sidebar.albumTracks).toEqual([]);
     });
 
     it('tolerates missing elements when clearing', () => {
@@ -183,9 +226,70 @@ describe('sidebar media methods', () => {
       expect(byId('continueWatchingList').querySelectorAll('.media-item')).toHaveLength(1);
       expect(byId('nextUpList').querySelectorAll('.media-item')).toHaveLength(1);
       expect(byId('recentList').querySelectorAll('.media-item')).toHaveLength(1);
-      expect(fetchMock.mock.calls.every((call) => call[1].headers['X-Emby-Token'] === 'tok')).toBe(
-        true
-      );
+      expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
+      const urls = {};
+      fetchMock.mock.calls.forEach((call, index) => {
+        urls[new URL(call[0]).pathname] = expectAuthed(fetchMock, index);
+      });
+      const resume = urls['/UserItems/Resume'];
+      expect(resume.searchParams.get('MediaTypes')).toBe('Video');
+      expect(resume.searchParams.get('Limit')).toBe('10');
+      expect(resume.searchParams.get('Fields')).toContain('SeriesName');
+      const nextUp = urls['/Shows/NextUp'];
+      expect(nextUp.searchParams.get('UserId')).toBe('user-1');
+      expect(nextUp.searchParams.get('Fields')).toContain('IndexNumber');
+      const latest = urls['/Items/Latest'];
+      expect(latest.searchParams.get('includeItemTypes')).toBe('Movie,Series,Episode');
+      expect(latest.searchParams.get('enableImageTypes')).toBe('Primary,Backdrop,Thumb');
+      expect(latest.searchParams.get('fields')).toContain('RunTimeTicks');
+      expect(latest.searchParams.get('limit')).toBe('20');
+    });
+
+    it('treats missing payloads as empty lists', async () => {
+      mockFetch([
+        ['/UserItems/Resume', null],
+        ['/Shows/NextUp', null],
+        ['/Items/Latest', null],
+      ]);
+      await sidebar.loadHomeTab();
+      expect(byId('continueWatchingList').textContent).toContain('Nothing to resume');
+      expect(byId('nextUpList').textContent).toContain('No upcoming episodes');
+      expect(byId('recentList').textContent).toContain('No recent items found');
+
+      mockFetch([
+        ['/UserItems/Resume', {}],
+        ['/Shows/NextUp', { Items: [] }],
+        ['/Items/Latest', []],
+      ]);
+      await sidebar.loadHomeTab();
+      expect(byId('continueWatchingList').textContent).toContain('Nothing to resume');
+      expect(byId('nextUpList').textContent).toContain('No upcoming episodes');
+      expect(byId('recentList').textContent).toContain('No items found');
+    });
+
+    it('shows loading placeholders while requests are pending', () => {
+      neverResolvingFetch();
+      sidebar.loadRecentItems();
+      sidebar.loadContinueWatching();
+      sidebar.loadNextUp();
+      sidebar.loadMovies();
+      sidebar.loadSeries();
+      sidebar.search('term');
+      sidebar.loadMusic();
+      sidebar.showAlbumTracks(ALBUM);
+      sidebar.selectedItem = SERIES;
+      sidebar.loadEpisodes('s1');
+      expect(byId('recentList').textContent).toBe('Loading recent items...');
+      expect(byId('continueWatchingList').textContent).toBe('Loading...');
+      expect(byId('nextUpList').textContent).toBe('Loading...');
+      expect(byId('moviesList').textContent).toBe('Loading movies...');
+      expect(byId('seriesList').textContent).toBe('Loading series...');
+      expect(byId('searchResults').textContent).toBe('Searching...');
+      expect(byId('musicList').textContent).toBe('Loading music...');
+      expect(byId('albumTracksList').textContent).toBe('Loading tracks...');
+      expect(byId('episodeList').textContent).toBe('Loading episodes...');
+      sidebar.showArtistAlbums({ Id: 'ar' });
+      expect(byId('musicList').textContent).toBe('Loading albums...');
     });
 
     it('shows empty states and errors', async () => {
@@ -211,13 +315,40 @@ describe('sidebar media methods', () => {
     });
 
     it('does nothing while disconnected', async () => {
-      sidebar.currentServer = null;
+      window.scrollTo.mockClear();
+      const lists = [
+        'recentList',
+        'continueWatchingList',
+        'nextUpList',
+        'moviesList',
+        'seriesList',
+        'musicList',
+      ];
+      for (const id of lists) byId(id).innerHTML = '<div>untouched</div>';
       const fetchMock = mockFetch([]);
-      await sidebar.loadHomeTab();
-      await sidebar.loadRecentItems();
-      await sidebar.loadContinueWatching();
-      await sidebar.loadNextUp();
+      const loadEverything = async () => {
+        await sidebar.loadHomeTab();
+        await sidebar.loadRecentItems();
+        await sidebar.loadContinueWatching();
+        await sidebar.loadNextUp();
+        await sidebar.loadMovies();
+        await sidebar.loadSeries();
+        await sidebar.loadMusic();
+        await sidebar.showArtistAlbums({ Id: 'ar' });
+        await sidebar.search('term');
+      };
+
+      // A user without a server, and a server without a user, both count as disconnected
+      sidebar.currentServer = null;
+      await loadEverything();
+      connect(sidebar);
+      sidebar.currentUser = null;
+      await loadEverything();
+
       expect(fetchMock).not.toHaveBeenCalled();
+      for (const id of lists) expect(byId(id).textContent).toBe('untouched');
+      expect(byId('searchResults').textContent).toContain('Enter a search term above');
+      expect(window.scrollTo).not.toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
     });
 
     it('drops stale responses for each list', async () => {
@@ -299,20 +430,33 @@ describe('sidebar media methods', () => {
       byId('moviesGenreSelect').innerHTML = '<option value="Drama" selected>Drama</option>';
 
       await sidebar.loadMovies();
-      const url = new URL(fetchMock.mock.calls[0][0]);
+      const url = expectAuthed(fetchMock, 0);
+      expect(url.pathname).toBe('/Items');
       expect(url.searchParams.get('SortBy')).toBe('DateCreated');
       expect(url.searchParams.get('SortOrder')).toBe('Descending');
       expect(url.searchParams.get('IsPlayed')).toBe('false');
+      expect(url.searchParams.get('Filters')).toBeNull();
       expect(url.searchParams.get('Genres')).toBe('Drama');
       expect(url.searchParams.get('IncludeItemTypes')).toBe('Movie');
+      expect(url.searchParams.get('Recursive')).toBe('true');
+      expect(url.searchParams.get('Limit')).toBe('50');
+      expect(url.searchParams.get('EnableImageTypes')).toBe('Primary,Backdrop,Thumb');
+      expect(url.searchParams.get('Fields')).toContain('UserData');
       expect(byId('moviesList').querySelectorAll('.media-item')).toHaveLength(1);
 
       byId('seriesFilterSelect').value = 'favorites';
       await sidebar.loadSeries();
-      const seriesUrl = new URL(fetchMock.mock.calls[1][0]);
+      const seriesUrl = expectAuthed(fetchMock, 1);
       expect(seriesUrl.searchParams.get('Filters')).toBe('IsFavorite');
+      expect(seriesUrl.searchParams.get('IsPlayed')).toBeNull();
       expect(seriesUrl.searchParams.get('Genres')).toBeNull();
       expect(seriesUrl.searchParams.get('IncludeItemTypes')).toBe('Series');
+      expect(seriesUrl.searchParams.get('Recursive')).toBe('true');
+      expect(seriesUrl.searchParams.get('SortBy')).toBe('SortName');
+      expect(seriesUrl.searchParams.get('SortOrder')).toBe('Ascending');
+      expect(seriesUrl.searchParams.get('EnableImageTypes')).toBe('Primary,Backdrop,Thumb');
+      expect(seriesUrl.searchParams.get('Fields')).toContain('BackdropImageTags');
+      expect(seriesUrl.searchParams.get('Limit')).toBe('50');
 
       byId('moviesFilterSelect').value = 'favorites';
       await sidebar.loadMovies();
@@ -323,11 +467,30 @@ describe('sidebar media methods', () => {
       await sidebar.loadSeries();
       const seriesUrl2 = new URL(fetchMock.mock.calls[3][0]);
       expect(seriesUrl2.searchParams.get('IsPlayed')).toBe('false');
+      expect(seriesUrl2.searchParams.get('Filters')).toBeNull();
       expect(seriesUrl2.searchParams.get('Genres')).toBe('Comedy');
+
+      byId('moviesFilterSelect').value = 'all';
+      byId('moviesGenreSelect').innerHTML = '<option value="all" selected>All Genres</option>';
+      await sidebar.loadMovies();
+      const plain = new URL(fetchMock.mock.calls[4][0]);
+      expect(plain.searchParams.get('IsPlayed')).toBeNull();
+      expect(plain.searchParams.get('Filters')).toBeNull();
+      expect(plain.searchParams.get('Genres')).toBeNull();
     });
 
     it('shows empty, error and stale states', async () => {
       mockFetch([['/Items?', { Items: [] }]]);
+      await sidebar.loadMovies();
+      await sidebar.loadSeries();
+      expect(byId('moviesList').textContent).toContain('No movies found');
+      expect(byId('seriesList').textContent).toContain('No series found');
+      mockFetch([['/Items?', {}]]);
+      await sidebar.loadMovies();
+      await sidebar.loadSeries();
+      expect(byId('moviesList').textContent).toContain('No movies found');
+      expect(byId('seriesList').textContent).toContain('No series found');
+      mockFetch([['/Items?', null]]);
       await sidebar.loadMovies();
       await sidebar.loadSeries();
       expect(byId('moviesList').textContent).toContain('No movies found');
@@ -434,15 +597,20 @@ describe('sidebar media methods', () => {
 
       await sidebar.search('hint');
 
-      const url = new URL(fetchMock.mock.calls[0][0]);
+      const url = expectAuthed(fetchMock, 0);
+      expect(url.pathname).toBe('/Search/Hints');
       expect(url.searchParams.get('includeItemTypes')).toBe('Movie,Series,MusicAlbum');
       expect(url.searchParams.get('searchTerm')).toBe('hint');
+      expect(url.searchParams.get('limit')).toBe('20');
       expect(byId('searchResults').querySelectorAll('.media-item')).toHaveLength(1);
       expect(byId('searchResults').textContent).toContain('Hint (1999)');
     });
 
     it('shows no results, errors and drops stale searches', async () => {
       mockFetch([['/Search/Hints', {}]]);
+      await sidebar.search('x');
+      expect(byId('searchResults').textContent).toContain('No results found');
+      mockFetch([['/Search/Hints', null]]);
       await sidebar.search('x');
       expect(byId('searchResults').textContent).toContain('No results found');
 
@@ -500,10 +668,11 @@ describe('sidebar media methods', () => {
     });
 
     it('opens a hint by loading the full item', async () => {
-      mockFetch([['/Items/h1', SERIES]]);
+      const fetchMock = mockFetch([['/Items/h1', SERIES]]);
       const select = vi.spyOn(sidebar, 'selectMediaItem').mockImplementation(() => {});
       await sidebar.selectSearchItem({ ItemId: 'h1' });
       expect(select).toHaveBeenCalledWith(SERIES);
+      expect(expectAuthed(fetchMock, 0).pathname).toBe('/Items/h1');
 
       mockFetch([['/Items/h1', null]]);
       await sidebar.selectSearchItem({ ItemId: 'h1' });
@@ -524,9 +693,18 @@ describe('sidebar media methods', () => {
       sidebar.renderMediaList([], container);
       expect(container.textContent).toContain('No items found');
       sidebar.renderMediaList(null, container);
+      expect(container.textContent).toContain('No items found');
       sidebar.renderSearchResults(null, container);
       expect(container.textContent).toContain('No results found');
       sidebar.renderSearchResults([], container);
+      expect(container.textContent).toContain('No results found');
+
+      sidebar.renderMediaList([MOVIE, SERIES], container);
+      expect(container.childNodes).toHaveLength(2);
+      expect(strayText(container)).toBe('');
+      sidebar.renderSearchResults([{ ItemId: 'h1', Type: 'Movie' }], container);
+      expect(container.childNodes).toHaveLength(1);
+      expect(strayText(container)).toBe('');
     });
 
     it('formats runtimes', () => {
@@ -554,6 +732,11 @@ describe('sidebar media methods', () => {
       );
       expect(thumb({ Id: 'b', Type: 'Movie', BackdropImageTags: [] })).toBeNull();
       expect(thumb({ Id: 'b', Type: 'Movie', ImageTags: {} })).toBeNull();
+      // Only episodes fall back to their series artwork
+      expect(thumb({ Id: 'b', Type: 'Movie', SeriesId: 'series-1' })).toBeNull();
+      expect(
+        thumb({ Id: 'b', Type: 'Movie', SeriesId: 'series-1', BackdropImageTags: ['x'] })
+      ).toContain('/Items/b/Images/Backdrop');
       sidebar.currentServer = null;
       expect(thumb(MOVIE)).toBeNull();
     });
@@ -571,7 +754,8 @@ describe('sidebar media methods', () => {
         SONG,
         { ...SONG, Id: 'song-2', AlbumArtist: undefined, Artists: ['A', 'B'], Album: undefined },
         { ...SONG, Id: 'song-3', AlbumArtist: undefined, Artists: undefined, Album: undefined },
-        { Id: 'other', Type: 'BoxSet' },
+        { Id: 'other', Type: 'BoxSet', AlbumArtist: 'Z', Album: 'Q' },
+        { ...MOVIE, Id: 'movie-2', SeriesName: 'Not a show' },
       ];
       sidebar.renderMediaList(items, container);
 
@@ -589,7 +773,10 @@ describe('sidebar media methods', () => {
       expect(subtitle(8)).toBe('A, B');
       expect(subtitle(9)).toBeUndefined();
       expect(subtitle(10)).toBeUndefined();
+      expect(subtitle(11)).toBe('Movie');
       expect(rows[10].querySelector('.media-title').textContent).toBe('Unknown Title');
+      expect(strayText(container)).toBe('');
+      expect(container.childNodes).toHaveLength(items.length);
       expect(rows[4].querySelector('.media-title').textContent).toBe('Big Film (2020)');
       expect(rows[4].querySelector('.list-duration').textContent).toBe('1h 6m');
       expect(rows[10].querySelector('.list-duration')).toBeNull();
@@ -652,6 +839,14 @@ describe('sidebar media methods', () => {
       { ItemId: 'h2', Type: 'MusicAlbum', Name: 'A', PrimaryImageTag: 'p' },
       { ItemId: 'h3', Type: 'Movie', Name: 'M', BackdropImageTag: 'b', BackdropImageItemId: 'bi' },
       { ItemId: 'h4', Type: 'Movie' },
+      { ItemId: 'h5', Type: 'Movie', ThumbImageTag: 't', BackdropImageItemId: 'bi' },
+      {
+        ItemId: 'h6',
+        Type: 'Movie',
+        ThumbImageItemId: 'ti',
+        BackdropImageTag: 'b',
+        RunTimeTicks: 600000000,
+      },
     ];
 
     it('renders hints with thumbnails and actions', () => {
@@ -662,6 +857,11 @@ describe('sidebar media methods', () => {
       expect(rows[1].querySelector('.list-thumb').src).toContain('/Items/h2/Images/Primary');
       expect(rows[2].querySelector('.list-thumb').src).toContain('/Items/bi/Images/Backdrop');
       expect(rows[3].querySelector('.thumb-fallback')).not.toBeNull();
+      expect(rows[4].querySelector('.thumb-fallback')).not.toBeNull();
+      expect(rows[5].querySelector('.thumb-fallback')).not.toBeNull();
+      expect(rows[5].querySelector('.list-duration').textContent).toBe('1m');
+      expect(rows[3].querySelector('.list-duration')).toBeNull();
+      expect(strayText(container)).toBe('');
       expect(rows[0].querySelector('[data-action="select"]').textContent.trim()).toBe(
         'Browse Episodes'
       );
@@ -712,17 +912,25 @@ describe('sidebar media methods', () => {
 
   describe('episodes', () => {
     it('shows the season picker for a series', async () => {
-      mockFetch([
+      const fetchMock = mockFetch([
         ['/Shows/series-1/Seasons', { Items: [{ Id: 's1', IndexNumber: 1 }, { Id: 'sx' }] }],
       ]);
       sidebar.selectedEpisode = EPISODE;
+      byId('playEpisodeBtn').disabled = false;
+      byId('openEpisodeInJellyfinBtn').disabled = false;
+      byId('episodeList').innerHTML = '<div>stale</div>';
 
       await sidebar.showEpisodeSelection(SERIES);
 
       expect(byId('episodeSection').style.display).toBe('block');
       expect(byId('mainContent').style.display).toBe('none');
       expect(sidebar.selectedEpisode).toBeNull();
+      expect(sidebar.selectedSeason).toBeNull();
+      expect(byId('playEpisodeBtn').disabled).toBe(true);
       expect(byId('downloadEpisodeBtn').disabled).toBe(true);
+      expect(byId('openEpisodeInJellyfinBtn').disabled).toBe(true);
+      expect(byId('episodeList').textContent).toBe('Select a season');
+      expect(expectAuthed(fetchMock, 0).pathname).toBe('/Shows/series-1/Seasons');
       const options = Array.from(byId('seasonSelect').options).map((option) => option.textContent);
       expect(options).toEqual(['Select a season...', 'Season 1']);
     });
@@ -744,12 +952,25 @@ describe('sidebar media methods', () => {
         { Id: 'ep-v', Name: 'Virtual', IndexNumber: 3, LocationType: 'Virtual' },
         { Id: 'ep-n', MediaSources: [{}] },
       ];
-      mockFetch([['/Shows/series-1/Episodes', { Items: episodes }]]);
+      const fetchMock = mockFetch([['/Shows/series-1/Episodes', { Items: episodes }]]);
 
       await sidebar.loadEpisodes('s1');
 
+      const url = expectAuthed(fetchMock, 0);
+      expect(url.pathname).toBe('/Shows/series-1/Episodes');
+      expect(url.searchParams.get('seasonId')).toBe('s1');
+      expect(url.searchParams.get('fields')).toContain('MediaSources');
       const rows = byId('episodeList').querySelectorAll('.episode-item');
       expect(rows).toHaveLength(3);
+      expect(byId('episodeList').childNodes).toHaveLength(3);
+      expect(strayText(byId('episodeList'))).toBe('');
+      expect(rows[0].className.trim()).toBe('episode-item');
+      expect(rows[0].dataset.available).toBe('true');
+      expect(rows[0].style.cursor).toBe('');
+      expect(rows[1].className).toBe('episode-item unavailable');
+      expect(rows[1].dataset.available).toBe('false');
+      expect(rows[1].style.cursor).toBe('not-allowed');
+      expect(rows[2].querySelector('.ep-duration')).toBeNull();
       expect(rows[0].querySelector('.ep-thumb').src).toContain('/Items/ep-1/Images/Primary');
       expect(rows[2].querySelector('.ep-thumb').src).toContain('/Items/series-1/Images/Thumb');
       expect(rows[1].classList.contains('unavailable')).toBe(true);
@@ -862,11 +1083,22 @@ describe('sidebar media methods', () => {
       byId('mainContent').style.display = 'none';
       sidebar.selectedEpisode = EPISODE;
 
+      byId('playEpisodeBtn').disabled = false;
+      byId('openEpisodeInJellyfinBtn').disabled = false;
+      byId('episodeList').innerHTML = '<div>stale</div>';
+      byId('seasonSelect').innerHTML = '<option>stale</option>';
+      sidebar.selectedSeason = 's1';
+
       sidebar.hideEpisodeSelection(false);
       expect(byId('episodeSection').style.display).toBe('none');
       expect(byId('mainContent').style.display).toBe('none');
       expect(sidebar.selectedEpisode).toBeNull();
+      expect(sidebar.selectedSeason).toBeNull();
+      expect(byId('playEpisodeBtn').disabled).toBe(true);
       expect(byId('downloadEpisodeBtn').disabled).toBe(true);
+      expect(byId('openEpisodeInJellyfinBtn').disabled).toBe(true);
+      expect(byId('episodeList').innerHTML).toBe('');
+      expect(byId('seasonSelect').innerHTML).toBe('');
 
       sidebar.hideEpisodeSelection();
       expect(byId('mainContent').style.display).toBe('block');
@@ -880,6 +1112,12 @@ describe('sidebar media methods', () => {
         false
       );
       expect(sidebar.isEpisodeAvailable({ Name: 'ok', MediaSources: [{}] })).toBe(true);
+      expect(
+        sidebar.isEpisodeAvailable({ Name: 'fs', LocationType: 'FileSystem', MediaSources: [{}] })
+      ).toBe(true);
+      expect(sidebar.isEpisodeAvailable({ Name: 'nf', MediaSources: [{}], IsFolder: false })).toBe(
+        true
+      );
       const broken = {
         Name: 'broken',
         get LocationType() {
@@ -923,41 +1161,68 @@ describe('sidebar media methods', () => {
 
       await sidebar.loadMusic();
       expect(byId('musicList').querySelectorAll('.music-item')).toHaveLength(1);
-      expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('IncludeItemTypes')).toBe(
-        'MusicAlbum'
-      );
+      const albums = expectAuthed(fetchMock, 0);
+      expect(albums.searchParams.get('IncludeItemTypes')).toBe('MusicAlbum');
+      expect(albums.searchParams.get('Recursive')).toBe('true');
+      expect(albums.searchParams.get('Genres')).toBeNull();
+      expect(albums.searchParams.get('EnableImageTypes')).toBe('Primary');
+      expect(albums.searchParams.get('Fields')).toContain('ChildCount');
+      expect(albums.searchParams.get('Limit')).toBe('50');
 
       byId('musicViewSelect').value = 'artists';
       byId('musicGenreSelect').innerHTML = '<option value="Jazz" selected>Jazz</option>';
       await sidebar.loadMusic();
-      expect(fetchMock.mock.calls[1][0]).toContain('/Artists?');
-      expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get('Genres')).toBe('Jazz');
+      const artists = expectAuthed(fetchMock, 1);
+      expect(artists.pathname).toBe('/Artists');
+      expect(artists.searchParams.get('Genres')).toBe('Jazz');
+      expect(artists.searchParams.get('EnableImageTypes')).toBe('Primary');
+      expect(artists.searchParams.get('Fields')).toContain('ImageTags');
+      expect(byId('musicList').querySelector('.media-subtitle').textContent).toBe('Artist');
 
       byId('musicViewSelect').value = 'songs';
       await sidebar.loadMusic();
-      expect(new URL(fetchMock.mock.calls[2][0]).searchParams.get('IncludeItemTypes')).toBe(
-        'Audio'
-      );
-      expect(new URL(fetchMock.mock.calls[2][0]).searchParams.get('Genres')).toBe('Jazz');
+      const songs = expectAuthed(fetchMock, 2);
+      expect(songs.searchParams.get('IncludeItemTypes')).toBe('Audio');
+      expect(songs.searchParams.get('Recursive')).toBe('true');
+      expect(songs.searchParams.get('Genres')).toBe('Jazz');
+      expect(songs.searchParams.get('Fields')).toContain('AlbumId');
+      expect(byId('musicList').querySelector('[data-action="select"]').textContent).toBe('Play');
 
       byId('musicViewSelect').value = 'albums';
       await sidebar.loadMusic();
       expect(new URL(fetchMock.mock.calls[3][0]).searchParams.get('Genres')).toBe('Jazz');
+      expect(byId('musicList').querySelector('[data-action="select"]').textContent).toBe(
+        'View Tracks'
+      );
+
+      byId('musicViewSelect').value = 'artists';
+      byId('musicGenreSelect').innerHTML = '<option value="all" selected>All</option>';
+      await sidebar.loadMusic();
+      expect(new URL(fetchMock.mock.calls[4][0]).searchParams.get('Genres')).toBeNull();
+      byId('musicViewSelect').value = 'songs';
+      await sidebar.loadMusic();
+      expect(new URL(fetchMock.mock.calls[5][0]).searchParams.get('Genres')).toBeNull();
     });
 
     it('shows empty and error states for each view', async () => {
-      mockFetch([
-        ['/Artists?', { Items: [] }],
-        ['/Items?', {}],
-      ]);
-      await sidebar.loadMusic();
-      expect(byId('musicList').textContent).toContain('No albums found');
-      byId('musicViewSelect').value = 'artists';
-      await sidebar.loadMusic();
-      expect(byId('musicList').textContent).toContain('No artists found');
-      byId('musicViewSelect').value = 'songs';
-      await sidebar.loadMusic();
-      expect(byId('musicList').textContent).toContain('No songs found');
+      for (const payload of [{ Items: [] }, {}, null]) {
+        mockFetch([
+          ['/Artists?', payload],
+          ['/Items?', payload],
+        ]);
+        byId('musicViewSelect').value = 'albums';
+        await sidebar.loadMusic();
+        expect(byId('musicList').textContent).toContain('No albums found');
+        byId('musicViewSelect').value = 'artists';
+        await sidebar.loadMusic();
+        expect(byId('musicList').textContent).toContain('No artists found');
+        byId('musicViewSelect').value = 'songs';
+        await sidebar.loadMusic();
+        expect(byId('musicList').textContent).toContain('No songs found');
+        await sidebar.showArtistAlbums({ Id: 'ar', Name: 'Band' });
+        expect(byId('musicList').textContent).toContain('No albums found for Band');
+      }
+      byId('musicViewSelect').value = 'albums';
 
       mockFetch([['/Items?', new Error('x')]]);
       await sidebar.loadMusic();
@@ -978,12 +1243,19 @@ describe('sidebar media methods', () => {
           await gate.promise;
           if (call === 4 || call === 5) throw new Error('old');
         }
+        const stale = call <= 6;
         return {
           status: 200,
           statusText: 'OK',
           headers: new Headers(),
           text: async () =>
-            JSON.stringify({ Items: [url.includes('/Artists') ? { Id: 'a' } : ALBUM] }),
+            JSON.stringify({
+              Items: [
+                url.includes('/Artists')
+                  ? { Id: 'a', Name: stale ? 'Stale Artist' : 'Fresh Artist' }
+                  : { ...ALBUM, Name: stale ? 'Stale Album' : 'Fresh Album' },
+              ],
+            }),
         };
       });
 
@@ -1008,7 +1280,8 @@ describe('sidebar media methods', () => {
       ]);
 
       expect(byId('musicList').querySelectorAll('.music-item')).toHaveLength(1);
-      expect(byId('musicList').textContent).toContain('Record');
+      expect(byId('musicList').textContent).toContain('Fresh Album');
+      expect(byId('musicList').textContent).not.toContain('Stale');
     });
 
     it('picks music thumbnails', () => {
@@ -1084,8 +1357,17 @@ describe('sidebar media methods', () => {
       expect(rows[2].querySelector('.media-subtitle')).toBeNull();
       expect(rows[2].querySelector('.thumb-fallback').textContent).toBe('🎵');
 
+      expect(strayText(container)).toBe('');
+      expect(container.childNodes).toHaveLength(3);
+
       sidebar.renderMusicList([{ Id: 'x' }], container, 'other');
       expect(container.querySelector('.media-title').textContent).toBe('Unknown Title');
+      expect(container.querySelector('.media-subtitle')).toBeNull();
+      expect(container.querySelector('[data-action="select"]').textContent).toBe('Play');
+      expect(container.querySelector('[data-action="download"]')).toBeNull();
+      expect(container.querySelector('.thumb-fallback').textContent).toBe('🎵');
+      expect(container.querySelector('.list-duration')).toBeNull();
+      expect(strayText(container)).toBe('');
     });
 
     it('wires music row actions', () => {
@@ -1114,20 +1396,34 @@ describe('sidebar media methods', () => {
 
       sidebar.selectMusicItem(ALBUM, 'album');
       sidebar.selectMusicItem(ALBUM, 'song');
+      sidebar.selectMusicItem({ Id: 'x', Type: 'Audio' }, 'album');
       sidebar.selectMusicItem({ Id: 'ar', Type: 'MusicArtist' }, 'artist');
       sidebar.selectMusicItem({ Id: 'ar', Type: 'MusicArtist' }, 'song');
+      sidebar.selectMusicItem({ Id: 'x', Type: 'Audio' }, 'artist');
       sidebar.selectMusicItem(SONG, 'song');
 
-      expect(tracks).toHaveBeenCalledTimes(2);
-      expect(albums).toHaveBeenCalledTimes(2);
+      expect(tracks).toHaveBeenCalledTimes(3);
+      expect(albums).toHaveBeenCalledTimes(3);
+      expect(play).toHaveBeenCalledTimes(1);
       expect(play).toHaveBeenCalledWith(SONG);
     });
 
     it('shows the albums of an artist', async () => {
       const fetchMock = mockFetch([['/Items?', { Items: [ALBUM] }]]);
       await sidebar.showArtistAlbums({ Id: 'ar', Name: 'Band' });
-      expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('AlbumArtistIds')).toBe('ar');
+      const url = expectAuthed(fetchMock, 0);
+      expect(url.searchParams.get('AlbumArtistIds')).toBe('ar');
+      expect(url.searchParams.get('IncludeItemTypes')).toBe('MusicAlbum');
+      expect(url.searchParams.get('Recursive')).toBe('true');
+      expect(url.searchParams.get('SortBy')).toBe('ProductionYear,SortName');
+      expect(url.searchParams.get('SortOrder')).toBe('Descending');
+      expect(url.searchParams.get('Fields')).toContain('ChildCount');
+      expect(url.searchParams.get('EnableImageTypes')).toBe('Primary');
+      expect(url.searchParams.get('Limit')).toBe('50');
       expect(byId('musicList').querySelectorAll('.music-item')).toHaveLength(1);
+      expect(byId('musicList').querySelector('[data-action="select"]').textContent).toBe(
+        'View Tracks'
+      );
 
       mockFetch([['/Items?', { Items: [] }]]);
       await sidebar.showArtistAlbums({ Id: 'ar', Name: 'B<and>' });
@@ -1156,11 +1452,21 @@ describe('sidebar media methods', () => {
       expect(byId('albumTracksSection').style.display).toBe('block');
       expect(byId('mainContent').style.display).toBe('none');
       expect(byId('albumTracksTitle').textContent).toBe('Record — Band');
-      expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('ParentId')).toBe('album-1');
+      const url = expectAuthed(fetchMock, 0);
+      expect(url.searchParams.get('ParentId')).toBe('album-1');
+      expect(url.searchParams.get('IncludeItemTypes')).toBe('Audio');
+      expect(url.searchParams.get('SortBy')).toBe('ParentIndexNumber,IndexNumber,SortName');
+      expect(url.searchParams.get('SortOrder')).toBe('Ascending');
+      expect(url.searchParams.get('Fields')).toContain('Artists');
       expect(sidebar.albumTracks).toEqual(tracks);
+      expect(sidebar.selectedAlbum).toEqual(ALBUM);
       expect(byId('playAllTracksBtn').disabled).toBe(false);
+      expect(byId('openAlbumInJellyfinBtn').disabled).toBe(false);
 
       const rows = byId('albumTracksList').querySelectorAll('.track-item');
+      expect(byId('albumTracksList').childNodes).toHaveLength(3);
+      expect(strayText(byId('albumTracksList'))).toBe('');
+      expect(rows[2].querySelector('.track-duration')).toBeNull();
       expect(rows[0].querySelector('.track-title').textContent).toBe('One');
       expect(rows[0].querySelector('.track-artist').textContent).toBe('A, B');
       expect(rows[0].querySelector('.track-duration').textContent).toBe('1m');
@@ -1253,10 +1559,20 @@ describe('sidebar media methods', () => {
 
       byId('albumTracksSection').style.display = 'block';
       byId('mainContent').style.display = 'none';
+      byId('albumTracksList').innerHTML = '<div>stale</div>';
+      byId('playAllTracksBtn').disabled = false;
+      byId('openAlbumInJellyfinBtn').disabled = false;
+      sidebar.selectedTrack = SONG;
+      sidebar.albumTracks = [SONG];
       sidebar.hideAlbumTracks(false);
       expect(byId('albumTracksSection').style.display).toBe('none');
       expect(byId('mainContent').style.display).toBe('none');
       expect(sidebar.selectedAlbum).toBeNull();
+      expect(sidebar.selectedTrack).toBeNull();
+      expect(sidebar.albumTracks).toEqual([]);
+      expect(byId('albumTracksList').innerHTML).toBe('');
+      expect(byId('playAllTracksBtn').disabled).toBe(true);
+      expect(byId('openAlbumInJellyfinBtn').disabled).toBe(true);
       sidebar.hideAlbumTracks();
       expect(byId('mainContent').style.display).toBe('block');
     });

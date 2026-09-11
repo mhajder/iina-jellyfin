@@ -9,7 +9,7 @@ const STDERR_TAIL_LENGTH = 300;
  * carries none.
  */
 function parseCurlProgress(chunk) {
-  const text = String(chunk ?? '');
+  const text = String(chunk);
   let last = null;
   let match;
   PROGRESS_PATTERN.lastIndex = 0;

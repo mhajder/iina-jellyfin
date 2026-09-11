@@ -67,7 +67,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
     },
 
     getOfflineEntry(itemId) {
-      return (this.offlineDownloads || []).find((entry) => entry.itemId === itemId) || null;
+      return this.offlineDownloads.find((entry) => entry.itemId === itemId) || null;
     },
 
     isDownloadable(item) {
@@ -213,15 +213,15 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
           `${this.currentServer.url}/Items/${hint.ItemId}?${params.toString()}`,
           { headers: { 'X-Emby-Token': this.currentServer.accessToken } }
         );
-        if (!response.data || !response.data.Id) {
-          throw new Error('Item details missing');
+        if (response.data && response.data.Id) {
+          return this.requestOfflineDownload(response.data);
         }
-        return this.requestOfflineDownload(response.data);
+        debugLog('Item lookup returned no item', { itemId: hint.ItemId });
       } catch (error) {
         debugLog('Could not load item for download:', error);
-        this.showDownloadsNotice('Failed to load item details for download');
-        return false;
       }
+      this.showDownloadsNotice('Failed to load item details for download');
+      return false;
     },
 
     downloadSelectedEpisode() {
@@ -300,7 +300,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
     },
 
     updateDownloadsBadge() {
-      const active = (this.offlineDownloads || []).filter((entry) =>
+      const active = this.offlineDownloads.filter((entry) =>
         ACTIVE_STATUSES.includes(entry.status)
       ).length;
       const badge = byId('downloadsBadge');
@@ -419,7 +419,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       itemEl.className = `download-item status-${entry.status}${entry.fileMissing ? ' missing' : ''}`;
       itemEl.dataset.downloadId = entry.itemId;
 
-      const icon = TYPE_ICONS[entry.type] || '🎬';
+      const icon = TYPE_ICONS[entry.type] || TYPE_ICONS.Movie;
       const subtitle = this.describeDownloadSubtitle(entry);
       const status = this.describeDownloadStatus(entry);
       const progress =
@@ -449,8 +449,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       `;
 
       itemEl.querySelectorAll('.download-action-btn').forEach((button) => {
-        button.addEventListener('click', (event) => {
-          event.stopPropagation();
+        button.addEventListener('click', () => {
           this.handleDownloadEntryAction(button.dataset.action, entry, button);
         });
       });
@@ -462,7 +461,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       const list = byId('downloadsList');
       const summary = byId('downloadsSummary');
       const directory = byId('downloadsDirectory');
-      const downloads = this.offlineDownloads || [];
+      const downloads = this.offlineDownloads;
 
       directory.textContent = this.offlineDirectory ? `Folder: ${this.offlineDirectory}` : '';
 
@@ -495,10 +494,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
 
     showDownloadsNotice(text) {
       const notice = byId('downloadsNotice');
-      if (this.downloadsNoticeTimer) {
-        clearTimeout(this.downloadsNoticeTimer);
-        this.downloadsNoticeTimer = null;
-      }
+      clearTimeout(this.downloadsNoticeTimer);
       notice.textContent = text;
       notice.style.display = 'block';
       this.downloadsNoticeTimer = setTimeout(() => {
