@@ -103,7 +103,14 @@ export function createPluginHost({ page, dataDir, preferences = {} }) {
           headers: options.headers || {},
           body: options.data ? JSON.stringify(options.data) : undefined,
         });
-        return { data: null, text: '', statusCode: response.status, reason: response.statusText };
+        const text = await response.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = text;
+        }
+        return { data, text, statusCode: response.status, reason: response.statusText };
       },
       async download(url, destination, options = {}) {
         const response = await fetch(url, { headers: options.headers || {} });
@@ -114,6 +121,11 @@ export function createPluginHost({ page, dataDir, preferences = {} }) {
     utils: {
       resolvePath,
       open: () => true,
+      // The system folder picker: tests preload the answer
+      chooseFile: () => {
+        record.folderPickerOpened = (record.folderPickerOpened || 0) + 1;
+        return host.nextChosenFolder;
+      },
       fileInPath(name) {
         const dirs = (process.env.PATH || '').split(path.delimiter);
         return dirs.some((dir) => fs.existsSync(path.join(dir, name)));
@@ -169,6 +181,7 @@ export function createPluginHost({ page, dataDir, preferences = {} }) {
     record,
     prefs,
     dataDir,
+    nextChosenFolder: '',
     emit(name, ...args) {
       for (const callback of events[name] || []) callback(...args);
     },

@@ -71,6 +71,7 @@ describe('plugin main entry', () => {
         'Download Jellyfin Subtitles',
         'Set Jellyfin Title',
         'Show Offline Downloads Folder',
+        'Choose Offline Downloads Folder…',
         'Show Jellyfin Browser',
       ]);
       expect(fake.menuItem('Show Jellyfin Browser').options).toEqual({
@@ -98,7 +99,7 @@ describe('plugin main entry', () => {
           f.iina.global = undefined;
         },
       });
-      expect(fake.menuItems).toHaveLength(4);
+      expect(fake.menuItems).toHaveLength(5);
 
       fake.emit('iina.window-loaded');
       fake.iina.sidebar.emit('play-media', { streamUrl: STREAM_URL, title: 'Film' });
@@ -124,6 +125,20 @@ describe('plugin main entry', () => {
       await flushPromises();
       expect(fake.iina.utils.exec).toHaveBeenCalledWith('mkdir', ['-p', '/abs/data/offline']);
       expect(fake.iina.file.showInFinder).toHaveBeenCalledWith('@data/offline');
+    });
+
+    it('lets the user choose the offline downloads folder', async () => {
+      const fake = await loadPlugin();
+      fake.iina.utils.chooseFile.mockReturnValue('/Volumes/Media/Offline');
+      fake.menuItem('Choose Offline Downloads Folder…').callback();
+      expect(fake.iina.utils.chooseFile).toHaveBeenCalledWith(
+        'Choose the folder for offline downloads',
+        { chooseDir: true }
+      );
+      expect(fake.prefs.get('offline_download_dir')).toBe('/Volumes/Media/Offline');
+      expect(fake.iina.core.osd).toHaveBeenCalledWith(
+        'Offline downloads folder: /Volumes/Media/Offline'
+      );
     });
   });
 
@@ -267,6 +282,8 @@ describe('plugin main entry', () => {
       expect(win.postMessage).toHaveBeenCalledWith('offline-downloads', {
         downloads: [],
         directory: '/abs/data/offline',
+        quality: 'original',
+        qualityPresets: expect.any(Array),
       });
     });
 
@@ -518,6 +535,8 @@ describe('plugin main entry', () => {
       expect(sidebar.postMessage).toHaveBeenCalledWith('offline-downloads', {
         downloads: [],
         directory: '/abs/data/offline',
+        quality: 'original',
+        qualityPresets: expect.any(Array),
       });
 
       routeHttp(fake.iina, [

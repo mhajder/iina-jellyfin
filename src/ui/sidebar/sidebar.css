@@ -691,6 +691,29 @@ body {
   transition: width 0.3s ease;
 }
 
+/* No total size while the server transcodes: show motion instead of a percentage */
+.download-progress.indeterminate .download-progress-bar {
+  background: linear-gradient(90deg, #2b2b2b 0%, var(--jf-accent) 50%, #2b2b2b 100%);
+  background-size: 200% 100%;
+  animation: download-indeterminate 1.4s linear infinite;
+}
+
+@keyframes download-indeterminate {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.offline-quality-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 .offline-download-btn[data-offline-state='completed'] {
   background: rgba(74, 222, 128, 0.2);
   color: #4ade80;

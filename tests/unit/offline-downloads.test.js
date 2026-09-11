@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QUALITY_PRESETS } from '../../src/lib/download-profile.js';
 import {
   createOfflineDownloadManager,
+  isTextSubtitle,
   buildDisplayTitle,
   pickContainer,
   normalizeLoadedPath,
@@ -90,6 +92,7 @@ function createEnv(options = {}) {
   };
   const utils = {
     resolvePath: vi.fn((path) => String(path).replace(/^@data/, '/abs/data')),
+    chooseFile: vi.fn(() => options.chosenFolder ?? '/Volumes/Ext/Offline'),
     exec: vi.fn(async (command, args) => {
       if (command === 'mkdir' && !options.mkdirFails) {
         files.set(toIinaPath(args[1]), '<dir>');
@@ -105,12 +108,20 @@ function createEnv(options = {}) {
   };
   const core = { osd: vi.fn(), subtitle: { loadTrack: vi.fn() } };
   const mpv = { set: vi.fn() };
+  const http = {
+    post: vi.fn(async () => ({ statusCode: 200, data: options.playbackInfoResponse || null })),
+  };
   const deps = {
     file,
     utils,
+    http,
     core,
     mpv,
-    preferences: { get: vi.fn((key) => prefs.get(key)) },
+    preferences: {
+      get: vi.fn((key) => prefs.get(key)),
+      set: vi.fn((key, value) => prefs.set(key, value)),
+      sync: vi.fn(),
+    },
     fetchPlaybackInfo: vi.fn(async () => playbackInfo()),
     buildJellyfinHeaders: vi.fn((token) => ({ Authorization: `MediaBrowser Token="${token}"` })),
     loadStoredServers: vi.fn(() => []),
@@ -138,6 +149,14 @@ const request = (item, extra = {}) => ({
 });
 
 describe('pure helpers', () => {
+  it('recognises text subtitle streams regardless of where they live', () => {
+    expect(isTextSubtitle(EXTERNAL_SUB)).toBe(true);
+    expect(isTextSubtitle(EMBEDDED_SUB)).toBe(true);
+    expect(isTextSubtitle(IMAGE_SUB)).toBe(false);
+    expect(isTextSubtitle({ Type: 'Audio', IsTextSubtitleStream: true })).toBe(false);
+    expect(isTextSubtitle(null)).toBe(false);
+  });
+
   it('exposes the status and type constants', () => {
     expect(STATUS.COMPLETED).toBe('completed');
     expect(DOWNLOADABLE_TYPES).toEqual(['Movie', 'Episode', 'Audio']);
@@ -248,7 +267,12 @@ describe('createOfflineDownloadManager', () => {
   describe('directory and manifest', () => {
     it('defaults to the plugin data folder', () => {
       expect(env.manager.getDirectory()).toBe('@data/offline');
-      expect(env.manager.snapshot()).toEqual({ downloads: [], directory: '/abs/data/offline' });
+      expect(env.manager.snapshot()).toEqual({
+        downloads: [],
+        directory: '/abs/data/offline',
+        quality: 'original',
+        qualityPresets: QUALITY_PRESETS.map(({ id, label }) => ({ id, label })),
+      });
     });
 
     it('uses the preference when set, without trailing slashes', () => {
@@ -448,7 +472,16 @@ describe('createOfflineDownloadManager', () => {
       expect(env.lastSnapshot()).toEqual({
         downloads: [expect.objectContaining({ status: 'completed' })],
         directory: '/abs/data/offline',
+        quality: 'original',
+        qualityPresets: expect.any(Array),
       });
+      expect(done).toMatchObject({
+        quality: 'original',
+        qualityLabel: 'Original quality',
+        bitrate: null,
+        transcoded: false,
+      });
+      expect(env.http.post).not.toHaveBeenCalled();
     });
 
     it('downloads songs from the audio route with fallbacks for missing data', async () => {
@@ -1231,6 +1264,224 @@ describe('createOfflineDownloadManager', () => {
     });
   });
 
+  describe('quality and transcoding', () => {
+    const TEXT_EMBEDDED = { ...EXTERNAL_SUB, Index: 6, IsExternal: false, Language: 'ger' };
+    const TRANSCODING_URL =
+      '/Videos/movie-1/stream.mp4?DeviceId=d&MediaSourceId=src-1&PlaySessionId=ps&api_key=token-123';
+
+    function transcodingResponse(overrides = {}) {
+      return {
+        statusCode: 200,
+        data: {
+          PlaySessionId: 'ps',
+          MediaSources: [
+            {
+              Id: 'src-1',
+              Container: 'mkv',
+              Size: 4096,
+              TranscodingUrl: TRANSCODING_URL,
+              MediaStreams: [EXTERNAL_SUB, TEXT_EMBEDDED, IMAGE_SUB],
+            },
+          ],
+        },
+        ...overrides,
+      };
+    }
+
+    it('falls back to the original quality for unknown ids', () => {
+      expect(env.manager.getQualityPreset('nope').id).toBe('original');
+      expect(env.manager.getQualityPreset('2000').label).toBe('2 Mb/s');
+      env.prefs.set('offline_download_quality', '500');
+      expect(env.manager.getQualityPreset().id).toBe('500');
+      expect(env.manager.getQualityPreset(undefined).id).toBe('500');
+      expect(env.manager.getQualityPreset(null).id).toBe('500');
+    });
+
+    it('persists the chosen quality and broadcasts it', () => {
+      expect(env.manager.setQuality('1000')).toMatchObject({ id: '1000', bitrate: 1000000 });
+      expect(env.preferences.set).toHaveBeenCalledWith('offline_download_quality', '1000');
+      expect(env.preferences.sync).toHaveBeenCalledTimes(1);
+      expect(env.lastSnapshot().quality).toBe('1000');
+      expect(env.manager.setQuality('garbage').id).toBe('original');
+    });
+
+    it('downloads a transcoded file with every text subtitle when a cap applies', async () => {
+      env.http.post.mockResolvedValue(transcodingResponse());
+      env.prefs.set('offline_download_quality', '4000');
+
+      await env.manager.startDownload(request(MOVIE, { quality: '2000' }));
+      const queued = env.entry('movie-1');
+      expect(queued).toMatchObject({ quality: '2000', qualityLabel: '2 Mb/s', bitrate: 2000000 });
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+
+      expect(env.fetchPlaybackInfo).not.toHaveBeenCalled();
+      expect(env.http.post).toHaveBeenCalledTimes(1);
+      const [url, options] = env.http.post.mock.calls[0];
+      expect(url).toBe(`${SERVER}/Items/movie-1/PlaybackInfo`);
+      expect(options.headers).toEqual({
+        Authorization: `MediaBrowser Token="${TOKEN}"`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      });
+      expect(options.data).toMatchObject({
+        MaxStreamingBitrate: 2000000,
+        StartTimeTicks: 0,
+        IsPlayback: true,
+        AutoOpenLiveStream: true,
+      });
+      expect(options.data.DeviceProfile.MaxStreamingBitrate).toBe(2000000);
+      expect(options.data.DeviceProfile.TranscodingProfiles[0]).toMatchObject({
+        Container: 'mp4',
+        Protocol: 'http',
+      });
+
+      const done = env.entry('movie-1');
+      expect(done).toMatchObject({
+        transcoded: true,
+        container: 'mp4',
+        expectedBytes: null,
+        mediaPath: '@data/offline/movie-1.mp4',
+        progress: 100,
+      });
+      expect(env.transport.download.mock.calls[0][0]).toBe(`${SERVER}${TRANSCODING_URL}`);
+      // Embedded text tracks are lost in the transcode, so they come down too
+      expect(done.subtitles.map((subtitle) => subtitle.index)).toEqual([3, 6]);
+      expect(env.transport.download).toHaveBeenCalledTimes(3);
+    });
+
+    it('takes the original file when the server does not need to transcode', async () => {
+      env.http.post.mockResolvedValue(
+        transcodingResponse({
+          data: {
+            MediaSources: [
+              {
+                Id: 'src-1',
+                Container: 'mkv',
+                Size: 4096,
+                MediaStreams: [EXTERNAL_SUB, TEXT_EMBEDDED],
+              },
+            ],
+          },
+        })
+      );
+      await env.manager.startDownload(request(MOVIE, { quality: '8000' }));
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+
+      const done = env.entry('movie-1');
+      expect(done).toMatchObject({
+        transcoded: false,
+        quality: '8000',
+        container: 'mkv',
+        expectedBytes: 4096,
+      });
+      expect(env.transport.download.mock.calls[0][0]).toBe(
+        `${SERVER}/Videos/movie-1/stream?static=true&mediaSourceId=src-1`
+      );
+      expect(done.subtitles.map((subtitle) => subtitle.index)).toEqual([3]);
+      expect(env.log).toHaveBeenCalledWith(
+        'Server offers movie-1 without transcoding at 8 Mb/s, taking the original'
+      );
+    });
+
+    it('parses string responses and reports failed negotiations', async () => {
+      env.http.post.mockResolvedValue({
+        statusCode: 200,
+        data: JSON.stringify(transcodingResponse().data),
+      });
+      await env.manager.startDownload(request(MOVIE, { quality: '500' }));
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+      expect(env.entry('movie-1').transcoded).toBe(true);
+
+      env.http.post.mockResolvedValue({ statusCode: 500, data: 'boom' });
+      await env.manager.startDownload(request(SONG, { quality: '500' }));
+      await waitFor(() => env.entry('song-1')?.status === 'failed');
+      expect(env.entry('song-1').error).toBe('PlaybackInfo failed with status 500');
+
+      env.http.post.mockResolvedValue({ statusCode: 200, data: null });
+      await env.manager.startDownload(request(EPISODE, { quality: '500' }));
+      await waitFor(() => env.entry('ep-1')?.status === 'failed');
+      expect(env.entry('ep-1').error).toBe('No media source available for this item');
+
+      env.http.post.mockResolvedValue(undefined);
+      await env.manager.startDownload(
+        request({ Id: 'x', Type: 'Movie', Name: 'X' }, { quality: '500' })
+      );
+      await waitFor(() => env.entry('x')?.status === 'failed');
+      expect(env.entry('x').error).toBe('No media source available for this item');
+    });
+
+    it('keeps the audio route for songs and reads the container from the url', async () => {
+      env.http.post.mockResolvedValue(
+        transcodingResponse({
+          data: {
+            MediaSources: [
+              {
+                Id: 'src-a',
+                TranscodingUrl: '/Audio/song-1/stream.mp3?api_key=x',
+                MediaStreams: [],
+              },
+            ],
+          },
+        })
+      );
+      await env.manager.startDownload(request(SONG, { quality: '250' }));
+      await waitFor(() => env.entry('song-1')?.status === 'completed');
+      expect(env.entry('song-1')).toMatchObject({
+        container: 'mp3',
+        mediaPath: '@data/offline/song-1.mp3',
+        transcoded: true,
+      });
+    });
+
+    it('uses the preference when the request names no quality', async () => {
+      env.prefs.set('offline_download_quality', '1000');
+      env.http.post.mockResolvedValue(transcodingResponse());
+      await env.manager.startDownload(request(MOVIE));
+      expect(env.entry('movie-1').quality).toBe('1000');
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+      expect(env.http.post.mock.calls[0][1].data.MaxStreamingBitrate).toBe(1000000);
+    });
+
+    it('retries with the quality the entry was queued with', async () => {
+      env.http.post.mockResolvedValueOnce({ statusCode: 503, data: null });
+      env.http.post.mockResolvedValue(transcodingResponse());
+      await env.manager.startDownload(request(MOVIE, { quality: '2000' }));
+      await waitFor(() => env.entry('movie-1')?.status === 'failed');
+
+      await env.manager.retryDownload({ itemId: 'movie-1', serverUrl: SERVER, accessToken: TOKEN });
+      await waitFor(() => env.entry('movie-1')?.status === 'completed');
+      expect(env.entry('movie-1')).toMatchObject({ quality: '2000', transcoded: true });
+    });
+
+    it('lets the user pick the download folder', () => {
+      expect(env.manager.chooseDownloadFolder()).toBe('/Volumes/Ext/Offline');
+      expect(env.utils.chooseFile).toHaveBeenCalledWith('Choose the folder for offline downloads', {
+        chooseDir: true,
+      });
+      expect(env.prefs.get('offline_download_dir')).toBe('/Volumes/Ext/Offline');
+      expect(env.preferences.sync).toHaveBeenCalledTimes(1);
+      expect(env.core.osd).toHaveBeenCalledWith('Offline downloads folder: /Volumes/Ext/Offline');
+      expect(env.lastSnapshot().directory).toBe('/Volumes/Ext/Offline');
+      expect(env.manager.getDirectory()).toBe('/Volumes/Ext/Offline');
+    });
+
+    it('keeps the folder when the chooser is cancelled or fails', () => {
+      env.utils.chooseFile.mockReturnValueOnce('');
+      expect(env.manager.chooseDownloadFolder()).toBeNull();
+      env.utils.chooseFile.mockReturnValueOnce(undefined);
+      expect(env.manager.chooseDownloadFolder()).toBeNull();
+      env.utils.chooseFile.mockImplementationOnce(() => {
+        throw new Error('no dialog');
+      });
+      expect(env.manager.chooseDownloadFolder()).toBeNull();
+      expect(env.log).toHaveBeenCalledWith('Folder chooser failed: no dialog');
+      expect(env.log).toHaveBeenCalledWith('Folder chooser cancelled');
+      expect(env.preferences.set).not.toHaveBeenCalled();
+      expect(env.notifyViews).not.toHaveBeenCalled();
+      expect(env.manager.getDirectory()).toBe('@data/offline');
+    });
+  });
+
   describe('registerMessageHandlers', () => {
     function createView() {
       const handlers = {};
@@ -1250,6 +1501,8 @@ describe('createOfflineDownloadManager', () => {
       expect(view.postMessage).toHaveBeenCalledWith('offline-downloads', {
         downloads: [],
         directory: '/abs/data/offline',
+        quality: 'original',
+        qualityPresets: expect.any(Array),
       });
     });
 
@@ -1277,6 +1530,14 @@ describe('createOfflineDownloadManager', () => {
 
       view.handlers['offline-cancel']({ itemId: 'movie-1' });
       expect(env.log).toHaveBeenCalledWith('Cannot cancel unknown download: movie-1');
+
+      view.handlers['offline-set-quality']({ quality: '2000' });
+      expect(env.prefs.get('offline_download_quality')).toBe('2000');
+      view.handlers['offline-set-quality']();
+      expect(env.prefs.get('offline_download_quality')).toBe('original');
+
+      view.handlers['offline-choose-folder']();
+      expect(env.prefs.get('offline_download_dir')).toBe('/Volumes/Ext/Offline');
     });
 
     it('tolerates messages without data', () => {

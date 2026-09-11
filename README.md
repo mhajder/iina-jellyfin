@@ -34,7 +34,8 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Subtitles included**: Every external text subtitle of the item is downloaded next to the media file
 - **Works without Internet**: The Downloads panel, playback and subtitles need no server connection
 - **Progress, cancel, retry**: Live progress in the sidebar, cancel running downloads, retry failed ones
-- **Configurable folder**: Keep downloads in the plugin data folder or any folder you choose (e.g. an external drive)
+- **Configurable folder**: Keep downloads in the plugin data folder or any folder you choose (e.g. an external drive), picked with the system folder dialog
+- **Quality presets**: Download the original file or let the server transcode to a smaller progressive MP4 (8 Mb/s down to 250 Kb/s) for laptops on the go
 
 ### General Features
 
@@ -168,7 +169,9 @@ Movies, episodes and songs can be saved to disk and played later without any con
 
 When a downloaded file is played, its subtitles are loaded automatically and the window title is set from the stored metadata, so nothing is requested from the server. If the server is unreachable the sidebar still shows the Downloads panel, so your offline library is always accessible.
 
-Downloads are stored in the plugin data folder by default (`Show Offline Downloads Folder` in the menu opens it). A different folder can be set in the preferences; the list of downloads (`manifest.json`) lives next to the files, so a folder on an external drive carries its library with it. Access tokens are never written to that folder.
+Downloads are stored in the plugin data folder by default (`Show Offline Downloads Folder` in the menu opens it). A different folder can be picked with `Choose Offline Downloads Folder…` in the menu, the **Change Folder…** button of the Downloads panel, or typed into the preferences; the list of downloads (`manifest.json`) lives next to the files, so a folder on an external drive carries its library with it. Access tokens are never written to that folder.
+
+**Download quality.** The _Offline download quality_ picker in the sidebar (also in the preferences) decides what the next downloads fetch. _Original quality_ saves the file exactly as stored on the server. Any bitrate preset (8 Mb/s, 4 Mb/s, 2 Mb/s, 1 Mb/s, 500 Kb/s, 250 Kb/s) sends a device profile and the bitrate cap with the PlaybackInfo request, the same negotiation Jellyfin's own clients use: when the source is above the cap the server transcodes to a progressive MP4 (H.264/HEVC with AAC or AC3 audio, resolution chosen by the server) that streams to disk while it is encoded, otherwise the original file is downloaded because it is already small enough. Transcoded files lose their embedded text subtitles, so every text subtitle track is saved as a sidecar file; image subtitles are burned into the picture. The Downloads panel shows which quality an entry was made with.
 
 Downloading uses `curl` (present on every Mac) so multi-gigabyte files stream straight to disk with progress reporting; if `curl` is unavailable the plugin falls back to IINA's built-in downloader without progress.
 

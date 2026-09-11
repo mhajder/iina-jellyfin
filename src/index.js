@@ -155,6 +155,7 @@ function notifyViews(name, data) {
 const offlineDownloads = createOfflineDownloadManager({
   file,
   utils,
+  http,
   core,
   mpv,
   preferences,
@@ -423,6 +424,11 @@ menu.addItem(menu.item('Set Jellyfin Title', manualSetTitle));
 menu.addItem(
   menu.item('Show Offline Downloads Folder', () => {
     offlineDownloads.showDownloadsFolder();
+  })
+);
+menu.addItem(
+  menu.item('Choose Offline Downloads Folder…', () => {
+    offlineDownloads.chooseDownloadFolder();
   })
 );
 menu.addItem(

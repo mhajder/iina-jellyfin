@@ -46,6 +46,8 @@ export const ITEMS = {
 };
 
 const MEDIA_SIZES = { 'movie-1': 256 * 1024, 'ep-1': 64 * 1024, 'slow-1': 2 * 1024 * 1024 };
+// Bitrate the "server" reports for each source; a download capped below it is transcoded
+const SOURCE_BITRATES = { 'movie-1': 6000000, 'ep-1': 3000000, 'slow-1': 20000000 };
 
 const SUBTITLES = {
   'movie-1': [
@@ -71,6 +73,14 @@ export function mediaBytes(itemId) {
   return Buffer.alloc(size, `${itemId}:`);
 }
 
+/**
+ * What the "transcoder" produces: a smaller, different pattern, so a test can
+ * tell a transcoded download from the original bytes.
+ */
+export function transcodedBytes(itemId, bitrate) {
+  return Buffer.alloc(48 * 1024, `${itemId}@${bitrate}:`);
+}
+
 export function subtitleText(itemId, index) {
   const stream = (SUBTITLES[itemId] || []).find((entry) => entry.Index === index);
   const language = stream ? stream.Language : 'unknown';
@@ -86,6 +96,22 @@ function subtitleStreams(itemId) {
   }));
 }
 
+function readJsonBody(req, callback) {
+  let raw = '';
+  req.on('data', (chunk) => {
+    raw += chunk;
+  });
+  req.on('end', () => {
+    let body = {};
+    try {
+      body = raw ? JSON.parse(raw) : {};
+    } catch {
+      body = {};
+    }
+    callback(body);
+  });
+}
+
 function isAuthorized(req) {
   const token = req.headers['x-emby-token'];
   const authorization = req.headers.authorization || '';
@@ -93,7 +119,12 @@ function isAuthorized(req) {
 }
 
 export function createMockJellyfin({ uiDir }) {
-  const state = { online: true, requests: [], brokenItems: new Set(['broken-1']) };
+  const state = {
+    online: true,
+    requests: [],
+    playbackInfoRequests: [],
+    brokenItems: new Set(['broken-1']),
+  };
   let server = null;
 
   function json(res, status, body) {
@@ -187,17 +218,36 @@ export function createMockJellyfin({ uiDir }) {
     }
     if ((match = pathname.match(/^\/Items\/([^/]+)\/PlaybackInfo$/))) {
       const itemId = match[1];
-      return json(res, 200, {
-        PlaySessionId: 'ps-1',
-        MediaSources: [
-          {
-            Id: `src-${itemId}`,
-            Container: 'mkv,webm',
-            Size: mediaBytes(itemId).length,
-            MediaStreams: [{ Type: 'Video' }, ...subtitleStreams(itemId)],
-          },
-        ],
-      });
+      const source = {
+        Id: `src-${itemId}`,
+        Container: 'mkv,webm',
+        Size: mediaBytes(itemId).length,
+        Bitrate: SOURCE_BITRATES[itemId] || 1000000,
+        MediaStreams: [{ Type: 'Video' }, ...subtitleStreams(itemId)],
+      };
+      if (req.method === 'POST') {
+        // A capped request with a device profile: transcode when the source
+        // is above the cap, exactly what Jellyfin does.
+        return readJsonBody(req, (body) => {
+          state.playbackInfoRequests.push({ itemId, body });
+          const cap = Number(body.MaxStreamingBitrate) || 0;
+          const hasProfile = Boolean(body.DeviceProfile && body.DeviceProfile.TranscodingProfiles);
+          if (hasProfile && cap > 0 && cap < source.Bitrate) {
+            source.TranscodingUrl = `/Videos/${itemId}/stream.mp4?MediaSourceId=src-${itemId}&VideoBitrate=${cap}&PlaySessionId=ps-1&api_key=${TOKEN}`;
+          }
+          json(res, 200, { PlaySessionId: 'ps-1', MediaSources: [source] });
+        });
+      }
+      return json(res, 200, { PlaySessionId: 'ps-1', MediaSources: [source] });
+    }
+    if ((match = pathname.match(/^\/Videos\/([^/]+)\/stream\.mp4$/))) {
+      // Transcoded output: chunked, no Content-Length, like a live encode
+      const itemId = match[1];
+      const bytes = transcodedBytes(itemId, searchParams.get('VideoBitrate'));
+      res.writeHead(200, { 'Content-Type': 'video/mp4', 'Transfer-Encoding': 'chunked' });
+      res.write(bytes.subarray(0, bytes.length / 2));
+      setTimeout(() => res.end(bytes.subarray(bytes.length / 2)), 150);
+      return undefined;
     }
     if ((match = pathname.match(/^\/Items\/([^/]+)\/Images\//))) {
       res.writeHead(404);

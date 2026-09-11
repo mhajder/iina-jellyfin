@@ -192,7 +192,34 @@
         Where movies, episodes and songs downloaded from the Jellyfin browser are stored, together
         with their external subtitles. Leave empty to use the plugin's data folder. A path such as
         <code>~/Movies/Jellyfin Offline</code> or a folder on an external drive works too; the list
-        of downloads is kept next to the files, so it moves with them.
+        of downloads is kept next to the files, so it moves with them. The
+        <em>Choose Offline Downloads Folder…</em> menu item opens a folder picker for this setting.
+      </p>
+    </div>
+
+    <div class="pref-section">
+      <p>Download quality:</p>
+      <label
+        ><input type="radio" name="offline_download_quality" value="original" /> Original quality
+        (the file as stored on the server)</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="8000" /> 8 Mb/s</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="4000" /> 4 Mb/s</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="2000" /> 2 Mb/s</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="1000" /> 1 Mb/s</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="500" /> 500 Kb/s</label
+      ><br />
+      <label><input type="radio" name="offline_download_quality" value="250" /> 250 Kb/s</label>
+      <p class="small secondary pref-help">
+        Anything below the original quality asks the server to transcode the download to a
+        progressive MP4 (H.264/HEVC with AAC or AC3 audio) capped at that bitrate; the server picks
+        a matching resolution. Text subtitles are saved as separate files either way, image
+        subtitles are burned into transcoded video. The same choice is available in the Jellyfin
+        browser sidebar.
       </p>
     </div>
 

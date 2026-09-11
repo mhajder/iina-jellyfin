@@ -61,6 +61,7 @@ export function createFakeIina({ preferences = {}, files = {} } = {}) {
       resolvePath: vi.fn((path) => String(path).replace(/^@data/, '/abs/data')),
       open: vi.fn(() => true),
       fileInPath: vi.fn(() => false),
+      chooseFile: vi.fn(() => ''),
       exec: vi.fn(async (command, args) => {
         if (command === 'mkdir') {
           fileStore.set(String(args[1]).replace('/abs/data', '@data'), '<dir>');

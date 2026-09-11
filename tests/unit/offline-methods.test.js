@@ -255,8 +255,13 @@ describe('sidebar offline methods', () => {
         serverUrl: 'http://jf.local:8096',
         accessToken: 'tok',
         serverId: 'srv-1',
+        quality: 'original',
       });
       expect(byId('downloadsNotice').textContent).toBe('Queued for download: Pilot');
+
+      sidebar.offlineQuality = '2000';
+      sidebar.requestOfflineDownload(MOVIE);
+      expect(bridge.postMessage.mock.calls[1][1].quality).toBe('2000');
     });
 
     it('falls back to the active server id and a placeholder name', () => {
@@ -417,9 +422,11 @@ describe('sidebar offline methods', () => {
       expect(byId('loginSection').style.display).toBe('block');
     });
 
-    it('asks the plugin to open the folder', () => {
+    it('asks the plugin to open or change the folder', () => {
       click(byId('openDownloadsFolderBtn'));
       expect(bridge.postMessage).toHaveBeenCalledWith('offline-open-folder', undefined);
+      click(byId('changeDownloadsFolderBtn'));
+      expect(bridge.postMessage).toHaveBeenCalledWith('offline-choose-folder', undefined);
     });
 
     it('works while disconnected', () => {
@@ -429,6 +436,138 @@ describe('sidebar offline methods', () => {
       expect(byId('downloadsList').querySelectorAll('.download-item')).toHaveLength(1);
       sidebar.hideDownloadsPanel();
       expect(byId('loginSection').style.display).toBe('block');
+    });
+  });
+
+  describe('download quality', () => {
+    const presets = [
+      { id: 'original', label: 'Original quality' },
+      { id: '2000', label: '2 Mb/s' },
+      { id: '500', label: '500 Kb/s' },
+    ];
+
+    it('starts disabled and fills the picker from the plugin', () => {
+      const select = byId('downloadQualitySelect');
+      expect(select.disabled).toBe(true);
+      expect(select.options).toHaveLength(0);
+
+      bridge.deliver('offline-downloads', {
+        downloads: [],
+        quality: '2000',
+        qualityPresets: presets,
+      });
+      expect(select.disabled).toBe(false);
+      expect(
+        Array.from(select.options).map((option) => [option.value, option.textContent])
+      ).toEqual([
+        ['original', 'Original quality'],
+        ['2000', '2 Mb/s'],
+        ['500', '500 Kb/s'],
+      ]);
+      expect(select.value).toBe('2000');
+      expect(sidebar.offlineQuality).toBe('2000');
+
+      // Repeated snapshots keep the options and update the selection only
+      const firstOption = select.options[0];
+      bridge.deliver('offline-downloads', {
+        downloads: [],
+        quality: '500',
+        qualityPresets: presets,
+      });
+      expect(select.options[0]).toBe(firstOption);
+      expect(select.value).toBe('500');
+
+      // Missing or empty preset lists leave the picker as it was
+      bridge.deliver('offline-downloads', { downloads: [], qualityPresets: [] });
+      expect(select.options).toHaveLength(3);
+      expect(select.value).toBe('500');
+      bridge.deliver('offline-downloads', { downloads: [] });
+      expect(select.value).toBe('500');
+    });
+
+    it('escapes preset labels', () => {
+      bridge.deliver('offline-downloads', {
+        downloads: [],
+        quality: 'x',
+        qualityPresets: [{ id: 'x', label: '<b>bold</b>' }],
+      });
+      expect(byId('downloadQualitySelect').options[0].textContent).toBe('<b>bold</b>');
+    });
+
+    it('sends the chosen quality to the plugin', () => {
+      bridge.deliver('offline-downloads', {
+        downloads: [],
+        quality: 'original',
+        qualityPresets: presets,
+      });
+      bridge.postMessage.mockClear();
+      const select = byId('downloadQualitySelect');
+
+      select.value = '2000';
+      select.dispatchEvent(new Event('change'));
+
+      expect(sidebar.offlineQuality).toBe('2000');
+      expect(bridge.postMessage).toHaveBeenCalledWith('offline-set-quality', { quality: '2000' });
+      expect(byId('downloadsNotice').textContent).toBe('New downloads will use 2 mb/s');
+
+      sidebar.setOfflineQuality('unknown');
+      expect(byId('downloadsNotice').textContent).toBe(
+        'New downloads will use the selected quality'
+      );
+    });
+
+    it('labels the quality of an entry', () => {
+      sidebar.offlineQualityPresets = presets;
+      expect(sidebar.qualityLabelFor(entry())).toBe('');
+      expect(sidebar.qualityLabelFor(entry({ quality: 'original', qualityLabel: 'X' }))).toBe('');
+      expect(sidebar.qualityLabelFor(entry({ quality: '2000', qualityLabel: '2 Mb/s' }))).toBe(
+        '2 Mb/s'
+      );
+      expect(sidebar.qualityLabelFor(entry({ quality: '500' }))).toBe('500 Kb/s');
+      expect(sidebar.qualityLabelFor(entry({ quality: '9' }))).toBe('9');
+    });
+
+    it('describes transcoded downloads', () => {
+      sidebar.offlineQualityPresets = presets;
+      expect(sidebar.describeDownloadStatus(entry({ status: 'queued', quality: '2000' }))).toBe(
+        'Queued · 2 Mb/s'
+      );
+      expect(
+        sidebar.describeDownloadStatus(
+          entry({ status: 'downloading', quality: '2000', transcoded: true, expectedBytes: null })
+        )
+      ).toBe('Transcoding to 2 Mb/s and downloading…');
+      expect(
+        sidebar.describeDownloadStatus(
+          entry({ status: 'downloading', quality: 'original', transcoded: true })
+        )
+      ).toBe('Transcoding to a smaller file and downloading…');
+      expect(
+        sidebar.describeDownloadStatus(
+          entry({ status: 'downloading', quality: '2000', transcoded: false, progress: 4 })
+        )
+      ).toBe('Downloading 4% of 1.5 GB');
+      expect(
+        sidebar.describeDownloadStatus(
+          entry({ quality: '2000', transcoded: true, expectedBytes: null, subtitles: [] })
+        )
+      ).toBe('Ready to play offline · transcoded to 2 Mb/s · 0 subtitles');
+      expect(sidebar.describeDownloadStatus(entry({ quality: '2000', transcoded: false }))).toBe(
+        'Ready to play offline · original file, already below the limit · 1.5 GB · 1 subtitle'
+      );
+    });
+
+    it('shows an indeterminate bar while transcoding', () => {
+      sidebar.offlineDownloads = [
+        entry({ itemId: 'a', status: 'downloading', transcoded: true, progress: 0 }),
+        entry({ itemId: 'b', status: 'downloading', transcoded: false, progress: 40 }),
+      ];
+      sidebar.renderDownloadsList();
+      const bars = byId('downloadsList').querySelectorAll('.download-progress');
+      expect(bars[0].className).toBe('download-progress indeterminate');
+      expect(bars[0].querySelector('.download-progress-bar').style.width).toBe('100%');
+      expect(bars[1].className).toBe('download-progress');
+      expect(bars[1].querySelector('.download-progress-bar').style.width).toBe('40%');
     });
   });
 

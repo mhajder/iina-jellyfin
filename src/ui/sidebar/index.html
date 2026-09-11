@@ -32,6 +32,13 @@
               <span id="downloadsBadge" class="downloads-badge" style="display: none"></span>
             </button>
           </div>
+          <div class="offline-quality-row">
+            <label class="input-label" for="downloadQualitySelect">Offline download quality</label>
+            <div class="select-container">
+              <select id="downloadQualitySelect" class="server-select" disabled></select>
+              <span class="select-arrow">&#9662;</span>
+            </div>
+          </div>
           <div id="downloadsNotice" class="downloads-notice" style="display: none"></div>
         </div>
       </div>
@@ -51,6 +58,7 @@
         </div>
         <div style="display: flex; gap: 8px; margin-top: 8px">
           <button id="openDownloadsFolderBtn" class="button secondary">Open Folder</button>
+          <button id="changeDownloadsFolderBtn" class="button secondary">Change Folder…</button>
           <button id="closeDownloadsBtn" class="button secondary">Back</button>
         </div>
       </div>

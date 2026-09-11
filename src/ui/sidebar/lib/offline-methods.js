@@ -22,6 +22,8 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
     setupOfflineUi() {
       this.offlineDownloads = [];
       this.offlineDirectory = null;
+      this.offlineQuality = 'original';
+      this.offlineQualityPresets = [];
       this.downloadsPanelReturn = null;
       this.downloadsNoticeTimer = null;
 
@@ -29,6 +31,12 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       byId('closeDownloadsBtn').addEventListener('click', () => this.hideDownloadsPanel());
       byId('openDownloadsFolderBtn').addEventListener('click', () => {
         this.postOfflineMessage('offline-open-folder');
+      });
+      byId('changeDownloadsFolderBtn').addEventListener('click', () => {
+        this.postOfflineMessage('offline-choose-folder');
+      });
+      byId('downloadQualitySelect').addEventListener('change', (event) => {
+        this.setOfflineQuality(event.target.value);
       });
       byId('downloadEpisodeBtn').addEventListener('click', () => this.downloadSelectedEpisode());
 
@@ -61,9 +69,56 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
     handleOfflineDownloads(data) {
       this.offlineDownloads = Array.isArray(data?.downloads) ? data.downloads : [];
       this.offlineDirectory = data?.directory || null;
+      if (Array.isArray(data?.qualityPresets) && data.qualityPresets.length > 0) {
+        this.offlineQualityPresets = data.qualityPresets;
+      }
+      if (data?.quality) {
+        this.offlineQuality = data.quality;
+      }
+      this.renderQualityOptions();
       this.renderDownloadsList();
       this.updateDownloadsBadge();
       this.refreshDownloadButtons(document);
+    },
+
+    /**
+     * Fill the quality picker with the presets the plugin knows and show the
+     * current choice. The picker stays empty until the plugin has answered.
+     */
+    renderQualityOptions() {
+      const select = byId('downloadQualitySelect');
+      const options = this.offlineQualityPresets
+        .map(
+          (preset) =>
+            `<option value="${this.escapeHtml(preset.id)}">${this.escapeHtml(preset.label)}</option>`
+        )
+        .join('');
+      if (select.innerHTML !== options) {
+        select.innerHTML = options;
+      }
+      select.value = this.offlineQuality;
+      select.disabled = this.offlineQualityPresets.length === 0;
+    },
+
+    /**
+     * Quality for the next downloads; persisted by the plugin as a preference.
+     */
+    setOfflineQuality(qualityId) {
+      this.offlineQuality = qualityId;
+      const preset = this.offlineQualityPresets.find((candidate) => candidate.id === qualityId);
+      debugLog(`Offline download quality changed to ${qualityId}`);
+      this.postOfflineMessage('offline-set-quality', { quality: qualityId });
+      this.showDownloadsNotice(
+        `New downloads will use ${preset ? preset.label.toLowerCase() : 'the selected quality'}`
+      );
+    },
+
+    qualityLabelFor(entry) {
+      if (!entry.quality || entry.quality === 'original') {
+        return '';
+      }
+      const preset = this.offlineQualityPresets.find((candidate) => candidate.id === entry.quality);
+      return entry.qualityLabel || (preset ? preset.label : entry.quality);
     },
 
     getOfflineEntry(itemId) {
@@ -194,6 +249,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
         serverUrl: this.currentServer.url,
         accessToken: this.currentServer.accessToken,
         serverId: this.currentServer.serverId || this.activeServerId || null,
+        quality: this.offlineQuality,
       });
       if (sent) {
         debugLog(`Requested offline download of ${item.Name} (${item.Id})`);
@@ -340,10 +396,15 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
 
     describeDownloadStatus(entry) {
       const size = this.formatBytes(entry.expectedBytes);
+      const quality = this.qualityLabelFor(entry);
       if (entry.status === 'queued') {
-        return 'Queued';
+        return quality ? `Queued · ${quality}` : 'Queued';
       }
       if (entry.status === 'downloading') {
+        if (entry.transcoded) {
+          // The server encodes while sending, so there is no total to count against
+          return `Transcoding to ${quality || 'a smaller file'} and downloading…`;
+        }
         return `Downloading ${entry.progress || 0}%${size ? ` of ${size}` : ''}`;
       }
       if (entry.status === 'cancelled') {
@@ -357,6 +418,11 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       }
       const subtitleCount = (entry.subtitles || []).length;
       const parts = ['Ready to play offline'];
+      if (entry.transcoded) {
+        parts.push(`transcoded to ${quality}`);
+      } else if (quality) {
+        parts.push('original file, already below the limit');
+      }
       if (size) parts.push(size);
       parts.push(`${subtitleCount} subtitle${subtitleCount === 1 ? '' : 's'}`);
       return parts.join(' · ');
@@ -424,6 +490,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
       const status = this.describeDownloadStatus(entry);
       const progress =
         entry.status === 'downloading' ? Math.max(0, Math.min(100, entry.progress || 0)) : null;
+      const indeterminate = progress !== null && entry.transcoded;
       const actions = this.downloadActionsFor(entry);
 
       itemEl.innerHTML = `
@@ -434,7 +501,7 @@ window.createSidebarOfflineMethods = function createSidebarOfflineMethods(debugL
           <div class="download-status">${this.escapeHtml(status)}</div>
           ${
             progress !== null
-              ? `<div class="download-progress"><div class="download-progress-bar" style="width: ${progress}%"></div></div>`
+              ? `<div class="download-progress${indeterminate ? ' indeterminate' : ''}"><div class="download-progress-bar" style="width: ${indeterminate ? 100 : progress}%"></div></div>`
               : ''
           }
           <div class="media-actions">

@@ -1,6 +1,12 @@
 'use strict';
 
 const { subtitleExtensionForCodec, isExternalTextSubtitle } = require('./subtitle-utils.js');
+const {
+  resolveQualityPreset,
+  listQualityPresets,
+  buildDownloadDeviceProfile,
+  containerFromTranscodingUrl,
+} = require('./download-profile.js');
 
 const DEFAULT_DIRECTORY = '@data/offline';
 const MANIFEST_FILE = 'manifest.json';
@@ -76,9 +82,18 @@ function normalizeLoadedPath(fileUrl) {
   }
 }
 
+/**
+ * Text subtitle streams of a media source, embedded or external. A transcoded
+ * MP4 carries none of them, so all have to come down as sidecar files.
+ */
+function isTextSubtitle(stream) {
+  return Boolean(stream && stream.Type === 'Subtitle' && stream.IsTextSubtitleStream === true);
+}
+
 function createOfflineDownloadManager({
   file,
   utils,
+  http,
   core,
   mpv,
   preferences,
@@ -104,6 +119,42 @@ function createOfflineDownloadManager({
 
   function manifestPath() {
     return `${getDirectory()}/${MANIFEST_FILE}`;
+  }
+
+  function getQualityPreset(qualityId) {
+    return resolveQualityPreset(qualityId ?? preferences.get('offline_download_quality'));
+  }
+
+  function setQuality(qualityId) {
+    const preset = resolveQualityPreset(qualityId);
+    preferences.set('offline_download_quality', preset.id);
+    preferences.sync();
+    log(`Offline download quality set to ${preset.label}`);
+    broadcast();
+    return preset;
+  }
+
+  /**
+   * Let the user pick the download folder with the system dialog and store
+   * it. Returns the chosen path, or null when the dialog was cancelled.
+   */
+  function chooseDownloadFolder() {
+    let chosen = null;
+    try {
+      chosen = utils.chooseFile('Choose the folder for offline downloads', { chooseDir: true });
+    } catch (error) {
+      log(`Folder chooser failed: ${error.message}`);
+    }
+    if (!chosen) {
+      log('Folder chooser cancelled');
+      return null;
+    }
+    preferences.set('offline_download_dir', chosen);
+    preferences.sync();
+    log(`Offline download folder set to ${chosen}`);
+    osd(`Offline downloads folder: ${chosen}`);
+    broadcast();
+    return chosen;
   }
 
   function osd(message) {
@@ -197,6 +248,8 @@ function createOfflineDownloadManager({
     return {
       downloads: listDownloads(),
       directory: utils.resolvePath(getDirectory()),
+      quality: getQualityPreset().id,
+      qualityPresets: listQualityPresets(),
     };
   }
 
@@ -247,8 +300,12 @@ function createOfflineDownloadManager({
     return Boolean(item && item.Id && DOWNLOADABLE_TYPES.includes(item.Type));
   }
 
-  function createEntry(item, serverUrl, serverId) {
+  function createEntry(item, serverUrl, serverId, preset) {
     return {
+      quality: preset.id,
+      qualityLabel: preset.label,
+      bitrate: preset.bitrate,
+      transcoded: false,
       itemId: item.Id,
       type: item.Type,
       title: buildDisplayTitle(item),
@@ -273,7 +330,7 @@ function createOfflineDownloadManager({
     };
   }
 
-  async function startDownload({ item, serverUrl, accessToken, serverId } = {}) {
+  async function startDownload({ item, serverUrl, accessToken, serverId, quality } = {}) {
     if (!isDownloadable(item)) {
       log(`Item is not downloadable: ${item ? `${item.Type} ${item.Id}` : 'missing'}`);
       osd('This item cannot be downloaded for offline use');
@@ -302,10 +359,10 @@ function createOfflineDownloadManager({
       removeEntry(item.Id);
     }
 
-    const entry = createEntry(item, serverUrl, serverId);
+    const entry = createEntry(item, serverUrl, serverId, getQualityPreset(quality));
     credentials[entry.itemId] = accessToken;
     getEntries().push(entry);
-    log(`Queued offline download: ${entry.title}`);
+    log(`Queued offline download: ${entry.title} (${entry.qualityLabel})`);
     osd(`Queued for download: ${entry.title}`);
 
     await persistAndBroadcast();
@@ -336,8 +393,11 @@ function createOfflineDownloadManager({
   }
 
   async function downloadSubtitles(entry, source, headers) {
-    const streams = (source.MediaStreams || []).filter(isExternalTextSubtitle);
-    log(`Found ${streams.length} external subtitle stream(s) for ${entry.itemId}`);
+    // The original file keeps its embedded tracks, so only sidecar files are
+    // fetched; a transcoded MP4 loses every text track, so all come down.
+    const wanted = entry.transcoded ? isTextSubtitle : isExternalTextSubtitle;
+    const streams = (source.MediaStreams || []).filter(wanted);
+    log(`Found ${streams.length} subtitle stream(s) to save for ${entry.itemId}`);
     const downloaded = [];
     const directory = getDirectory();
     const mediaSourceId = source.Id || entry.itemId;
@@ -369,6 +429,51 @@ function createOfflineDownloadManager({
     return downloaded;
   }
 
+  function parseResponseData(response) {
+    const data = response && response.data;
+    if (typeof data === 'string') {
+      return JSON.parse(data);
+    }
+    return data;
+  }
+
+  /**
+   * Ask the server how to deliver the item. Original quality reads the plain
+   * playback info; a capped quality posts a device profile and a bitrate
+   * limit, and the server answers with a TranscodingUrl when the source is
+   * above the cap (otherwise the original file is already small enough).
+   */
+  async function negotiateSource(entry, token, headers) {
+    const preset = resolveQualityPreset(entry.quality);
+    if (preset.bitrate === null) {
+      const playbackInfo = await fetchPlaybackInfo(entry.serverUrl, entry.itemId, token);
+      return { source: playbackInfo && playbackInfo.MediaSources && playbackInfo.MediaSources[0] };
+    }
+
+    const response = await http.post(`${entry.serverUrl}/Items/${entry.itemId}/PlaybackInfo`, {
+      headers: { ...headers, 'Content-Type': 'application/json', Accept: 'application/json' },
+      data: {
+        DeviceProfile: buildDownloadDeviceProfile(preset.bitrate),
+        MaxStreamingBitrate: preset.bitrate,
+        StartTimeTicks: 0,
+        IsPlayback: true,
+        AutoOpenLiveStream: true,
+      },
+    });
+    if (response && response.statusCode >= 400) {
+      throw new Error(`PlaybackInfo failed with status ${response.statusCode}`);
+    }
+    const playbackInfo = parseResponseData(response);
+    const source = playbackInfo && playbackInfo.MediaSources && playbackInfo.MediaSources[0];
+    if (source && source.TranscodingUrl) {
+      return { source, transcodingUrl: source.TranscodingUrl };
+    }
+    log(
+      `Server offers ${entry.itemId} without transcoding at ${preset.label}, taking the original`
+    );
+    return { source };
+  }
+
   async function runDownload(entry) {
     activeItemId = entry.itemId;
     entry.status = STATUS.DOWNLOADING;
@@ -388,27 +493,36 @@ function createOfflineDownloadManager({
       const headers = buildJellyfinHeaders(credentials[entry.itemId]);
 
       const directory = await ensureDirectory();
-      const playbackInfo = await fetchPlaybackInfo(
-        entry.serverUrl,
-        entry.itemId,
-        credentials[entry.itemId]
+      const { source, transcodingUrl } = await negotiateSource(
+        entry,
+        credentials[entry.itemId],
+        headers
       );
       assertStillDownloading();
-      const source = playbackInfo && playbackInfo.MediaSources && playbackInfo.MediaSources[0];
       if (!source) {
         throw new Error('No media source available for this item');
       }
 
-      entry.container = pickContainer(source, entry.type);
-      entry.expectedBytes = Number(source.Size) || null;
+      entry.transcoded = Boolean(transcodingUrl);
+      let mediaUrl;
+      if (transcodingUrl) {
+        // The server encodes while we download: no size is known up front.
+        entry.container = containerFromTranscodingUrl(transcodingUrl);
+        entry.expectedBytes = null;
+        mediaUrl = `${entry.serverUrl}${transcodingUrl}`;
+      } else {
+        entry.container = pickContainer(source, entry.type);
+        entry.expectedBytes = Number(source.Size) || null;
+        const route = entry.type === 'Audio' ? 'Audio' : 'Videos';
+        const mediaSourceId = source.Id || entry.itemId;
+        mediaUrl = `${entry.serverUrl}/${route}/${entry.itemId}/stream?static=true&mediaSourceId=${encodeURIComponent(mediaSourceId)}`;
+      }
       entry.mediaPath = `${directory}/${sanitizeId(entry.itemId)}.${entry.container}`;
       entry.mediaAbsolutePath = utils.resolvePath(entry.mediaPath);
       await persistAndBroadcast();
-
-      const route = entry.type === 'Audio' ? 'Audio' : 'Videos';
-      const mediaSourceId = source.Id || entry.itemId;
-      const mediaUrl = `${entry.serverUrl}/${route}/${entry.itemId}/stream?static=true&mediaSourceId=${encodeURIComponent(mediaSourceId)}`;
-      log(`Downloading ${entry.title} to ${entry.mediaAbsolutePath}`);
+      log(
+        `Downloading ${entry.title} to ${entry.mediaAbsolutePath}${entry.transcoded ? ' (transcoded)' : ''}`
+      );
 
       await transport.download(mediaUrl, entry.mediaPath, {
         headers,
@@ -647,6 +761,12 @@ function createOfflineDownloadManager({
     view.onMessage('offline-open-folder', () => {
       showDownloadsFolder();
     });
+    view.onMessage('offline-choose-folder', () => {
+      chooseDownloadFolder();
+    });
+    view.onMessage('offline-set-quality', (data) => {
+      setQuality(data && data.quality);
+    });
   }
 
   return {
@@ -663,12 +783,16 @@ function createOfflineDownloadManager({
     handleFileLoaded,
     showDownloadsFolder,
     showInFinder,
+    chooseDownloadFolder,
+    setQuality,
+    getQualityPreset,
     registerMessageHandlers,
   };
 }
 
 module.exports = {
   createOfflineDownloadManager,
+  isTextSubtitle,
   buildDisplayTitle,
   pickContainer,
   normalizeLoadedPath,
