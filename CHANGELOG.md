@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.3](https://github.com/mhajder/iina-jellyfin/compare/v0.7.2...v0.7.3) (2026-09-16)
+
+
+### 🐛 Bug Fixes
+
+* support Jellyfin 12 authorization ([#94](https://github.com/mhajder/iina-jellyfin/issues/94)) ([2881473](https://github.com/mhajder/iina-jellyfin/commit/2881473c23dd4fc4523afdfb7db1cf1b2e74cc81))
+
+
+### 🧩 CI
+
+* run the test suite in prek ([#97](https://github.com/mhajder/iina-jellyfin/issues/97)) ([c77c151](https://github.com/mhajder/iina-jellyfin/commit/c77c151748ba4b125930ea45569e4e7803e188b7))
+* track pre-commit hook updates with dependabot ([#98](https://github.com/mhajder/iina-jellyfin/issues/98)) ([3cb5d5d](https://github.com/mhajder/iina-jellyfin/commit/3cb5d5dfb7b439683e6bd35e14063bf67b339e84))
+
 ## [0.7.2](https://github.com/mhajder/iina-jellyfin/compare/v0.7.1...v0.7.2) (2026-08-14)
 
 
