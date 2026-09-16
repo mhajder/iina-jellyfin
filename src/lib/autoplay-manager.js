@@ -24,7 +24,7 @@ function createAutoplayManager({
       ].join('&');
 
       const response = await http.get(
-        `${serverBase}/Shows/${seriesId}/Episodes?${queryParams}&api_key=${apiKey}`,
+        `${serverBase}/Shows/${seriesId}/Episodes?${queryParams}&ApiKey=${apiKey}`,
         {
           headers: buildJellyfinHeaders(apiKey, {
             Accept: 'application/json',
@@ -52,7 +52,7 @@ function createAutoplayManager({
         name: episode.Name,
         indexNumber: Number(episode.IndexNumber) || 0,
         duration: episode.RunTimeTicks,
-        playUrl: `${serverBase}/Videos/${episode.Id}/stream?static=true&api_key=${apiKey}`,
+        playUrl: `${serverBase}/Videos/${episode.Id}/stream?static=true&ApiKey=${apiKey}`,
       }));
 
       episodes.sort((left, right) => left.indexNumber - right.indexNumber);
@@ -128,7 +128,7 @@ function createAutoplayManager({
       log('No next episode in current season, checking next season...');
 
       const seasonsResponse = await http.get(
-        `${serverBase}/Shows/${seriesId}/Seasons?api_key=${apiKey}`,
+        `${serverBase}/Shows/${seriesId}/Seasons?ApiKey=${apiKey}`,
         {
           headers: buildJellyfinHeaders(apiKey, { Accept: 'application/json' }),
         }

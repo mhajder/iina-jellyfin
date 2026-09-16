@@ -55,7 +55,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 
 The plugin automatically detects and downloads subtitles when you open Jellyfin URLs:
 
-1. Copy a Jellyfin media URL (e.g., from a Jellyfin download link containing `/Items/` and `api_key=`)
+1. Copy a Jellyfin media URL (e.g., from a Jellyfin download link containing `/Items/` and `ApiKey=`)
 2. Open the URL in IINA using File → Open URL
 3. Subtitles will be downloaded automatically based on your language preferences
 4. Manually download subtitles anytime using: Menu → "Download Jellyfin Subtitles" (or `Cmd+Shift+D`)
@@ -68,7 +68,7 @@ Open the browser sidebar using: View menu → "Show Jellyfin Browser" or press `
 
 **Option 1: Automatic Login via URL (Recommended)**
 
-1. Copy any Jellyfin media download URL containing an API key from your server (e.g., `http://server:8096/Items/{ItemId}/Download?api_key={key}`)
+1. Copy any Jellyfin media download URL containing an API key from your server (e.g., `http://server:8096/Items/{ItemId}/Download?ApiKey={key}`)
 2. Open the URL in IINA using File → Open URL
 3. The plugin automatically extracts and stores your server credentials
 4. When you open the sidebar, it will auto-connect to your server
@@ -153,8 +153,8 @@ Click the "Filter/Sort" button in the Movies or TV Series tab header to toggle t
 
 The plugin automatically detects and processes Jellyfin URLs in these formats:
 
-- Download URLs: `http://server:port/Items/{ItemId}/Download?api_key={key}` _(automatically stores credentials for sidebar login)_
-- URLs containing `/Items/` and `api_key=` _(automatically stores credentials for sidebar login)_
+- Download URLs: `http://server:port/Items/{ItemId}/Download?ApiKey={key}` _(automatically stores credentials for sidebar login)_
+- URLs containing `/Items/` and `ApiKey=` _(automatically stores credentials for sidebar login)_
 - URLs containing "jellyfin", "/Audio/", or "/Videos/"
 
 **Note**: URLs with API keys will automatically store authentication data for the sidebar browser, eliminating the need for manual login on first use.

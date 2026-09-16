@@ -147,7 +147,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
   async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     try {
-      const playbackUrl = `${serverBase}/Items/${itemId}/PlaybackInfo?api_key=${apiKey}`;
+      const playbackUrl = `${serverBase}/Items/${itemId}/PlaybackInfo?ApiKey=${apiKey}`;
       log(`Fetching playback info from: ${playbackUrl}`);
 
       const response = await http.get(playbackUrl, {
@@ -181,7 +181,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
   async function fetchItemMetadata(serverBase, itemId, apiKey) {
     try {
-      const metadataUrl = `${serverBase}/Items/${itemId}?api_key=${apiKey}`;
+      const metadataUrl = `${serverBase}/Items/${itemId}?ApiKey=${apiKey}`;
       log(`Fetching item metadata from: ${metadataUrl}`);
 
       const response = await http.get(metadataUrl, {

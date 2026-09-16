@@ -96,7 +96,7 @@ function createMediaActionsManager({
     try {
       const extension = subtitleExtensionForCodec(codec);
 
-      const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?api_key=${apiKey}`;
+      const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?ApiKey=${apiKey}`;
 
       // Everything lands in one @tmp directory, so the name has to identify the
       // item and the track. Server-side names like "English.srt" repeat across

@@ -41,7 +41,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -170,7 +170,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -220,7 +220,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -257,7 +257,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -312,7 +312,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -367,7 +367,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -431,7 +431,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -485,21 +485,21 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       if (item.Type === 'Episode') {
         if (item.ImageTags && item.ImageTags.Primary) {
-          return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+          return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
         }
         if (item.SeriesId) {
-          return `${base}/Items/${item.SeriesId}/Images/Thumb?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+          return `${base}/Items/${item.SeriesId}/Images/Thumb?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
         }
       }
 
       if (item.ImageTags && item.ImageTags.Thumb) {
-        return `${base}/Items/${item.Id}/Images/Thumb?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.Id}/Images/Thumb?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
       }
       if (item.ImageTags && item.ImageTags.Primary) {
-        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
       }
       if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
-        return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&ApiKey=${token}`;
       }
       return null;
     },
@@ -609,11 +609,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         const base = this.currentServer.url;
         const token = this.currentServer.accessToken;
         if (hint.ThumbImageTag && hint.ThumbImageItemId) {
-          thumbUrl = `${base}/Items/${hint.ThumbImageItemId}/Images/Thumb?maxWidth=160&quality=90&api_key=${token}`;
+          thumbUrl = `${base}/Items/${hint.ThumbImageItemId}/Images/Thumb?maxWidth=160&quality=90&ApiKey=${token}`;
         } else if (hint.PrimaryImageTag) {
-          thumbUrl = `${base}/Items/${hint.ItemId}/Images/Primary?maxWidth=160&quality=90&api_key=${token}`;
+          thumbUrl = `${base}/Items/${hint.ItemId}/Images/Primary?maxWidth=160&quality=90&ApiKey=${token}`;
         } else if (hint.BackdropImageTag && hint.BackdropImageItemId) {
-          thumbUrl = `${base}/Items/${hint.BackdropImageItemId}/Images/Backdrop?maxWidth=320&quality=90&api_key=${token}`;
+          thumbUrl = `${base}/Items/${hint.BackdropImageItemId}/Images/Backdrop?maxWidth=320&quality=90&ApiKey=${token}`;
         }
       }
 
@@ -708,7 +708,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           `${this.currentServer.url}/Items/${hint.ItemId}?${params.toString()}`,
           {
             headers: {
-              'X-Emby-Token': this.currentServer.accessToken,
+              Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
             },
           }
         );
@@ -748,7 +748,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           `${this.currentServer.url}/Shows/${series.Id}/Seasons?${params.toString()}`,
           {
             headers: {
-              'X-Emby-Token': this.currentServer.accessToken,
+              Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
             },
           }
         );
@@ -796,7 +796,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           `${this.currentServer.url}/Shows/${this.selectedItem.Id}/Episodes?${params.toString()}`,
           {
             headers: {
-              'X-Emby-Token': this.currentServer.accessToken,
+              Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
             },
           }
         );
@@ -822,9 +822,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
               const base = this.currentServer.url;
               const token = this.currentServer.accessToken;
               if (episode.ImageTags && episode.ImageTags.Primary) {
-                episodeThumbUrl = `${base}/Items/${episode.Id}/Images/Primary?maxWidth=120&quality=90&api_key=${token}`;
+                episodeThumbUrl = `${base}/Items/${episode.Id}/Images/Primary?maxWidth=120&quality=90&ApiKey=${token}`;
               } else if (this.selectedItem && this.selectedItem.Id) {
-                episodeThumbUrl = `${base}/Items/${this.selectedItem.Id}/Images/Thumb?maxWidth=120&quality=90&api_key=${token}`;
+                episodeThumbUrl = `${base}/Items/${this.selectedItem.Id}/Images/Thumb?maxWidth=120&quality=90&ApiKey=${token}`;
               }
             }
 
@@ -1023,7 +1023,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const response = await this.getHttpClient().get(fullUrl, {
         headers: {
-          'X-Emby-Token': this.currentServer.accessToken,
+          Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
         },
       });
 
@@ -1054,7 +1054,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const response = await this.getHttpClient().get(fullUrl, {
         headers: {
-          'X-Emby-Token': this.currentServer.accessToken,
+          Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
         },
       });
 
@@ -1087,7 +1087,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       const response = await this.getHttpClient().get(fullUrl, {
         headers: {
-          'X-Emby-Token': this.currentServer.accessToken,
+          Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
         },
       });
 
@@ -1113,7 +1113,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -1139,13 +1139,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       const token = this.currentServer.accessToken;
 
       if (item.ImageTags && item.ImageTags.Primary) {
-        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.Id}/Images/Primary?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
       }
       if (item.AlbumId) {
-        return `${base}/Items/${item.AlbumId}/Images/Primary?maxWidth=${maxWidth}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.AlbumId}/Images/Primary?maxWidth=${maxWidth}&quality=90&ApiKey=${token}`;
       }
       if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
-        return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&api_key=${token}`;
+        return `${base}/Items/${item.Id}/Images/Backdrop?maxWidth=${maxWidth * 2}&quality=90&ApiKey=${token}`;
       }
       return null;
     },
@@ -1282,7 +1282,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -1331,7 +1331,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
         const response = await this.getHttpClient().get(fullUrl, {
           headers: {
-            'X-Emby-Token': this.currentServer.accessToken,
+            Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
 
@@ -1441,7 +1441,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     buildStreamUrl(item) {
       if (!this.currentServer || !item || !item.Id) return null;
       const route = item.Type === 'Audio' ? 'Audio' : 'Videos';
-      return `${this.currentServer.url}/${route}/${item.Id}/stream?static=true&api_key=${this.currentServer.accessToken}`;
+      return `${this.currentServer.url}/${route}/${item.Id}/stream?static=true&ApiKey=${this.currentServer.accessToken}`;
     },
 
     async playMedia(item) {

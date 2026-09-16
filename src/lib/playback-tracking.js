@@ -140,7 +140,7 @@ function createPlaybackTrackingManager({
         return false;
       }
 
-      const url = `${serverBase}/Sessions/Playing?api_key=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing?ApiKey=${apiKey}`;
       log(`Reporting playback start for item: ${itemId}`);
 
       const response = await http.post(url, {
@@ -188,7 +188,7 @@ function createPlaybackTrackingManager({
       }
 
       const positionTicks = secondsToTicks(positionSeconds);
-      const url = `${serverBase}/Sessions/Playing/Progress?api_key=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing/Progress?ApiKey=${apiKey}`;
 
       const response = await http.post(url, {
         headers: buildJellyfinHeaders(apiKey, {
@@ -235,7 +235,7 @@ function createPlaybackTrackingManager({
       }
 
       const positionTicks = secondsToTicks(positionSeconds);
-      const url = `${serverBase}/Sessions/Playing/Stopped?api_key=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing/Stopped?ApiKey=${apiKey}`;
 
       log(`Reporting playback stop: position=${positionSeconds}s (${positionTicks} ticks)`);
 
@@ -274,7 +274,7 @@ function createPlaybackTrackingManager({
         return false;
       }
 
-      const url = `${serverBase}/UserPlayedItems/${itemId}?api_key=${apiKey}`;
+      const url = `${serverBase}/UserPlayedItems/${itemId}?ApiKey=${apiKey}`;
       log(`Marking item as watched: ${itemId}`);
 
       const response = await http.post(url, {

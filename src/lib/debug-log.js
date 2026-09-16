@@ -3,7 +3,7 @@
 const MAX_LOG_LENGTH = 600;
 const MAX_KEYS = 8;
 
-// Credentials travel in URLs (api_key=...) and in the MediaBrowser
+// Credentials travel in URLs (ApiKey=...) and in the MediaBrowser
 // Authorization header (Token="..."). Strip them from anything we log.
 const SECRET_QUERY_PARAM = /([?&](?:api_key|apikey|api-key|x-emby-token)=)[^&\s"']+/gi;
 const SECRET_TOKEN_FIELD = /((?:token|accesstoken|api_key)"?\s*[:=]\s*"?)[A-Za-z0-9._-]{8,}/gi;

@@ -128,14 +128,14 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
         const response = await this.getHttpClient().get(`${serverData.serverUrl}/System/Info`, {
           headers: {
-            'X-Emby-Token': serverData.accessToken,
+            Authorization: this.buildAuthorizationHeader(serverData.accessToken),
           },
         });
 
         if (response.status === 200 && response.data) {
           const userResponse = await this.getHttpClient().get(`${serverData.serverUrl}/Users/Me`, {
             headers: {
-              'X-Emby-Token': serverData.accessToken,
+              Authorization: this.buildAuthorizationHeader(serverData.accessToken),
             },
           });
 
