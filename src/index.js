@@ -632,15 +632,9 @@ event.on('mpv.end-file', () => {
 // eof-reached is an mpv property, not an event, so there is no
 // mpv.eof-reached event to listen for.
 
-// Stop tracking when window closes
+// Stop tracking when window closes.
 event.on('iina.window-will-close', () => {
   debugLog('Window closing, stopping playback tracking');
-  stopPlaybackTracking();
-});
-
-// Ensure we report stop on app termination
-event.on('iina.application-will-terminate', () => {
-  debugLog('Application terminating, stopping playback tracking');
   stopPlaybackTracking();
 });
 
