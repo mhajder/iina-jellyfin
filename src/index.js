@@ -67,6 +67,12 @@ const {
   log: debugLog,
 });
 
+// The webviews cannot read preferences, so the debug_logging flag travels with
+// the client identity they request on load.
+function getWebviewIdentity() {
+  return { ...getClientIdentity(), debugLogging: Boolean(preferences.get('debug_logging')) };
+}
+
 const {
   loadStoredServers,
   getActiveServerId,
@@ -287,7 +293,7 @@ function openJellyfinStandaloneWindow(sessionData) {
     // reach the plugin at all. Re-registering is safe because the message hub
     // keys listeners by name and replaces the previous callback.
     standaloneWindow.onMessage('get-client-identity', () => {
-      standaloneWindow.postMessage('client-identity', getClientIdentity());
+      standaloneWindow.postMessage('client-identity', getWebviewIdentity());
     });
 
     standaloneWindow.onMessage('get-session', () => {
@@ -364,7 +370,7 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     // Send session data after a brief delay
     setTimeout(() => {
-      standaloneWindow.postMessage('client-identity', getClientIdentity());
+      standaloneWindow.postMessage('client-identity', getWebviewIdentity());
       // Send multi-server list (sidebar will auto-connect to active server)
       const servers = loadStoredServers();
       const activeServerId = getActiveServerId();
@@ -658,7 +664,7 @@ event.on('iina.window-loaded', () => {
   // The webview cannot read preferences, so it asks for the shared Jellyfin
   // client identity (device id + version) it must authenticate with.
   sidebar.onMessage('get-client-identity', () => {
-    sidebar.postMessage('client-identity', getClientIdentity());
+    sidebar.postMessage('client-identity', getWebviewIdentity());
   });
 
   // Handle session requests from sidebar (backward compatible)
@@ -740,7 +746,7 @@ event.on('iina.window-loaded', () => {
 
   // Send initial server data to sidebar after a brief delay
   setTimeout(() => {
-    sidebar.postMessage('client-identity', getClientIdentity());
+    sidebar.postMessage('client-identity', getWebviewIdentity());
     const servers = loadStoredServers();
     const activeServerId = getActiveServerId();
     if (servers.length > 0) {
