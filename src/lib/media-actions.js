@@ -14,8 +14,66 @@ function createMediaActionsManager({
 }) {
   let lastJellyfinUrl = null;
   let lastItemId = null;
+  // Bumped on every file load. Metadata and subtitle requests capture it before
+  // awaiting and drop their result if another file has loaded in the meantime.
+  let fileGeneration = 0;
+
+  // Every title this plugin forced. force-media-title is a global mpv option,
+  // so it would stay on every file played after a Jellyfin item, and mpv can
+  // restore any older one of them when a file with its own per-file title (an
+  // autoplayed episode) ends, so none of them is forgotten.
+  const pluginTitles = new Set();
+  // The title set right before core.open, for the item about to load.
+  let titleForNextItem = null;
+
+  function isStale(generation) {
+    return generation !== fileGeneration;
+  }
+
+  /**
+   * The file that was playing has ended. Results still in flight for it must
+   * not reach whatever loads next, even before that file finishes loading.
+   */
+  function invalidatePendingResults() {
+    fileGeneration++;
+  }
+
+  function setPluginTitle(title) {
+    mpv.set('force-media-title', title);
+    pluginTitles.add(title);
+  }
+
+  /**
+   * Set before core.open so the title is there while the item loads. Ending
+   * the old file can make mpv restore an older title over it, so it is set
+   * again once that item has loaded.
+   */
+  function setTitleForNextItem(title, streamUrl) {
+    const info = parseJellyfinUrl(streamUrl);
+    titleForNextItem = info ? { title, itemId: info.itemId } : null;
+    setPluginTitle(title);
+  }
+
+  /**
+   * Clear the title this plugin forced, but only while it is still the one in
+   * effect: a title another script set for the new file (e.g. ytdl_hook's
+   * file-local YouTube title) must stay. mpv restores the plugin's title when
+   * that file ends, so the next non-Jellyfin file clears it then.
+   */
+  function clearPluginTitle() {
+    if (pluginTitles.size === 0) return;
+
+    try {
+      if (pluginTitles.has(mpv.getString('force-media-title'))) {
+        mpv.set('force-media-title', '');
+      }
+    } catch (error) {
+      log(`Could not clear force-media-title: ${error.message}`);
+    }
+  }
 
   async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
+    const generation = fileGeneration;
     try {
       if (!preferences.get('set_video_title')) {
         log('Video title setting is disabled in preferences');
@@ -23,6 +81,11 @@ function createMediaActionsManager({
       }
 
       const metadata = await fetchItemMetadata(serverBase, itemId, apiKey);
+
+      if (isStale(generation)) {
+        log(`Title for ${itemId} is stale, another file has loaded`);
+        return;
+      }
 
       if (!metadata || !metadata.Name) {
         log('No title found in metadata');
@@ -53,7 +116,7 @@ function createMediaActionsManager({
       let titleSet = false;
       if (!titleSet && typeof mpv !== 'undefined' && typeof mpv.set === 'function') {
         try {
-          mpv.set('force-media-title', title);
+          setPluginTitle(title);
           titleSet = true;
           log(`Video title set via mpv property: ${title}`);
         } catch (error) {
@@ -91,7 +154,8 @@ function createMediaActionsManager({
     subtitlePath,
     apiKey,
     language,
-    codec
+    codec,
+    generation
   ) {
     try {
       const extension = subtitleExtensionForCodec(codec);
@@ -125,6 +189,11 @@ function createMediaActionsManager({
 
       await http.download(subtitleUrl, localPath);
 
+      if (isStale(generation)) {
+        log(`Subtitle for ${itemId} is stale, another file has loaded`);
+        return false;
+      }
+
       const resolvedPath = utils.resolvePath(localPath);
       core.subtitle.loadTrack(resolvedPath);
 
@@ -142,8 +211,14 @@ function createMediaActionsManager({
   }
 
   async function downloadAllSubtitles(serverBase, itemId, apiKey) {
+    const generation = fileGeneration;
     try {
       const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
+
+      if (isStale(generation)) {
+        log(`Subtitles for ${itemId} are stale, another file has loaded`);
+        return;
+      }
 
       if (!playbackInfo.MediaSources || playbackInfo.MediaSources.length === 0) {
         log('No media sources found');
@@ -174,6 +249,11 @@ function createMediaActionsManager({
       let downloadedCount = 0;
 
       for (const stream of subtitleStreams) {
+        if (isStale(generation)) {
+          log(`Subtitles for ${itemId} are stale, another file has loaded`);
+          return;
+        }
+
         const language = stream.Language || 'unknown';
         const codec = stream.Codec || 'srt';
 
@@ -200,7 +280,8 @@ function createMediaActionsManager({
             stream.Path,
             apiKey,
             language,
-            codec
+            codec,
+            generation
           );
           if (downloaded) {
             downloadedCount++;
@@ -323,18 +404,29 @@ function createMediaActionsManager({
   }
 
   function updateFromFileUrl(fileUrl) {
+    fileGeneration++;
+    const expectedTitle = titleForNextItem;
+    titleForNextItem = null;
+
     if (isJellyfinUrl(fileUrl)) {
       const jellyfinInfo = parseJellyfinUrl(fileUrl);
       if (jellyfinInfo) {
+        // Never cleared here: an autoplayed or queued item carries a per-file
+        // title that may equal one of the plugin's, and clearing would wipe it.
+        if (expectedTitle && expectedTitle.itemId === jellyfinInfo.itemId) {
+          setPluginTitle(expectedTitle.title);
+        }
         lastJellyfinUrl = fileUrl;
         lastItemId = jellyfinInfo.itemId;
         log(`Stored Jellyfin media for manual download: ${jellyfinInfo.itemId}`);
         return jellyfinInfo;
       }
       log('Failed to parse Jellyfin URL');
+      clearPluginTitle();
       return null;
     }
 
+    clearPluginTitle();
     log('Non-Jellyfin URL loaded, clearing stored Jellyfin data');
     lastJellyfinUrl = null;
     lastItemId = null;
@@ -352,6 +444,8 @@ function createMediaActionsManager({
     manualDownloadSubtitles,
     manualSetTitle,
     updateFromFileUrl,
+    invalidatePendingResults,
+    setTitleForNextItem,
     getLastItemId,
   };
 }

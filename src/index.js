@@ -120,6 +120,8 @@ const {
   manualDownloadSubtitles,
   manualSetTitle,
   updateFromFileUrl,
+  invalidatePendingResults,
+  setTitleForNextItem,
 } = createMediaActionsManager({
   core,
   http,
@@ -467,7 +469,7 @@ function openInCurrentWindow(streamUrl, title) {
   // properly triggers IINA's native lifecycle and sleep prevention checks.
   // Set force-media-title BEFORE core.open so mpv uses it when loadfile runs.
   if (title) {
-    mpv.set('force-media-title', title);
+    setTitleForNextItem(title, streamUrl);
   }
   core.open(streamUrl);
 }
@@ -608,6 +610,7 @@ event.on('mpv.pause.changed', handlePauseChange);
 
 // Handle file ending (includes both natural end and replacement)
 event.on('mpv.end-file', () => {
+  invalidatePendingResults();
   const queuedForAutoplay = isQueued();
   const isReplacingPlayback = consumeReplacementGuard();
   debugLog(
