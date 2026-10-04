@@ -20,6 +20,9 @@
   ],
   "preferencesPage": "pref.html",
   "helpPage": "help.html",
+  "sidebarTab": {
+    "name": "Jellyfin"
+  },
   "preferenceDefaults": {
     "auto_download_enabled": true,
     "preferred_languages": "en,eng",
