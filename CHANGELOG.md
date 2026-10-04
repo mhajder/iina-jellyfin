@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.4](https://github.com/mhajder/iina-jellyfin/compare/v0.7.3...v0.7.4) (2026-10-04)
+
+
+### 🐛 Bug Fixes
+
+* declare a sidebar tab so the browser opens in IINA 1.5 ([#105](https://github.com/mhajder/iina-jellyfin/issues/105)) ([322def0](https://github.com/mhajder/iina-jellyfin/commit/322def0af3baefdae52eda4df018632454d1e538))
+* drop late async results and stop titles leaking to later files ([#107](https://github.com/mhajder/iina-jellyfin/issues/107)) ([0c06ed0](https://github.com/mhajder/iina-jellyfin/commit/0c06ed09ee5b72d3118b5bef61202794afa3896a))
+* keep the sidebar's server state consistent across logins and switches ([#111](https://github.com/mhajder/iina-jellyfin/issues/111)) ([73c8756](https://github.com/mhajder/iina-jellyfin/commit/73c8756a593416f7d76a5ae31317cb19de73b55d))
+* make sidebar debug logging follow the preference ([#109](https://github.com/mhajder/iina-jellyfin/issues/109)) ([4e429b1](https://github.com/mhajder/iina-jellyfin/commit/4e429b1ce7ab9cb991e117ba6d1e02b4d1bad815))
+* match subtitle languages and Jellyfin URLs precisely ([#112](https://github.com/mhajder/iina-jellyfin/issues/112)) ([24472ac](https://github.com/mhajder/iina-jellyfin/commit/24472acda9f603db8d78fc4cb73202245ac315d9))
+* queue the next episode again when an episode is reopened ([#110](https://github.com/mhajder/iina-jellyfin/issues/110)) ([23cdef0](https://github.com/mhajder/iina-jellyfin/commit/23cdef0632263f24c86bc8471d1da4d5fb78f118))
+* stop a replaced item at its own position ([#108](https://github.com/mhajder/iina-jellyfin/issues/108)) ([eeef4d7](https://github.com/mhajder/iina-jellyfin/commit/eeef4d7a5e7d33e3a5bcfbf2ea632807cadc1705))
+
+
+### 🧹 Refactoring
+
+* drop the application-will-terminate handler IINA never fires ([#113](https://github.com/mhajder/iina-jellyfin/issues/113)) ([322146f](https://github.com/mhajder/iina-jellyfin/commit/322146f3ae7ffb3d9873eebfe7d780e50f6f8769))
+
 ## [0.7.3](https://github.com/mhajder/iina-jellyfin/compare/v0.7.2...v0.7.3) (2026-09-16)
 
 
