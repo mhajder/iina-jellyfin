@@ -1,5 +1,117 @@
 'use strict';
 
+// Codes that name the same language: ISO 639-1, then the 639-2 forms
+// (bibliographic first where it differs). Jellyfin reports 639-2 codes, while
+// the preference accepts either standard.
+const LANGUAGE_CODE_GROUPS = [
+  ['en', 'eng'],
+  ['fr', 'fre', 'fra'],
+  ['de', 'ger', 'deu'],
+  ['es', 'spa'],
+  ['it', 'ita'],
+  // pob: Brazilian Portuguese as subtitle sites and Jellyfin tag it
+  ['pt', 'por', 'pob'],
+  ['nl', 'dut', 'nld'],
+  ['pl', 'pol'],
+  ['ru', 'rus'],
+  ['uk', 'ukr'],
+  ['cs', 'cze', 'ces'],
+  ['sk', 'slo', 'slk'],
+  ['sl', 'slv'],
+  ['hr', 'hrv', 'scr'],
+  ['sr', 'srp', 'scc'],
+  ['bs', 'bos'],
+  ['bg', 'bul'],
+  ['ro', 'rum', 'ron'],
+  ['hu', 'hun'],
+  ['el', 'gre', 'ell'],
+  ['tr', 'tur'],
+  ['sv', 'swe'],
+  // Bokmål and Nynorsk before plain Norwegian, which covers both.
+  ['nb', 'nob'],
+  ['nn', 'nno'],
+  ['no', 'nor', 'nob', 'nno', 'nb', 'nn'],
+  ['da', 'dan'],
+  ['fi', 'fin'],
+  ['is', 'ice', 'isl'],
+  ['et', 'est'],
+  ['lv', 'lav'],
+  ['lt', 'lit'],
+  ['ar', 'ara'],
+  ['he', 'heb', 'iw'],
+  ['fa', 'per', 'fas'],
+  ['hi', 'hin'],
+  ['bn', 'ben'],
+  ['ta', 'tam'],
+  ['te', 'tel'],
+  ['ur', 'urd'],
+  ['th', 'tha'],
+  ['vi', 'vie'],
+  ['id', 'ind', 'in'],
+  ['ms', 'may', 'msa'],
+  ['zh', 'chi', 'zho', 'cmn'],
+  ['ja', 'jpn'],
+  ['ko', 'kor'],
+  ['ca', 'cat'],
+  ['eu', 'baq', 'eus'],
+  ['gl', 'glg'],
+  ['ga', 'gle'],
+  ['cy', 'wel', 'cym'],
+  ['sq', 'alb', 'sqi'],
+  ['mk', 'mac', 'mkd'],
+  ['hy', 'arm', 'hye'],
+  ['ka', 'geo', 'kat'],
+  ['tl', 'tgl', 'fil'],
+  ['lb', 'ltz'],
+  ['se', 'sme'],
+  ['kk', 'kaz'],
+  // Listed so the prefix fallback cannot pair them with unrelated codes
+  // ("ha" with "hat", "la" with "lao", ...).
+  ['ha', 'hau'],
+  ['ht', 'hat'],
+  ['la', 'lat'],
+  ['lo', 'lao'],
+  ['ml', 'mal'],
+  ['mt', 'mlt'],
+  ['mg', 'mlg'],
+  ['mr', 'mar'],
+  ['mi', 'mao', 'mri'],
+  ['as', 'asm'],
+  ['st', 'sot'],
+  ['so', 'som'],
+  ['ch', 'cha'],
+  ['ce', 'che'],
+];
+
+function primaryLanguageCode(code) {
+  return String(code).trim().toLowerCase().split(/[-_]/)[0];
+}
+
+function languageCodeGroup(code) {
+  return LANGUAGE_CODE_GROUPS.find((group) => group.includes(code));
+}
+
+/**
+ * Whether a preferred code names the stream's language. Codes are compared
+ * whole, never as substrings (which let "en" match "ben"), after dropping a
+ * region suffix such as "en-US". Codes outside the table fall back to a
+ * 2-letter code matching the 3-letter code it starts, e.g. "sw" and "swa".
+ */
+function languagesMatch(preferred, language) {
+  const left = primaryLanguageCode(preferred);
+  const right = primaryLanguageCode(language);
+  if (!left || !right) return false;
+
+  const leftGroup = languageCodeGroup(left);
+  const rightGroup = languageCodeGroup(right);
+  if (leftGroup || rightGroup) {
+    return (leftGroup || [left]).includes(right) || (rightGroup || [right]).includes(left);
+  }
+
+  const [short, long] = left.length <= right.length ? [left, right] : [right, left];
+  return short === long || (short.length === 2 && long.length === 3 && long.startsWith(short));
+}
+
 function createMediaActionsManager({
   core,
   http,
@@ -167,8 +279,7 @@ function createMediaActionsManager({
 
       const preferredLanguages = (preferences.get('preferred_languages') || 'en,eng')
         .split(',')
-        .map((lang) => lang.trim().toLowerCase())
-        .filter((lang) => lang.length > 0);
+        .filter((lang) => lang.trim().length > 0);
       const shouldDownloadAll = preferences.get('download_all_subtitles');
 
       let downloadedCount = 0;
@@ -179,10 +290,7 @@ function createMediaActionsManager({
 
         const shouldDownload =
           shouldDownloadAll ||
-          preferredLanguages.some(
-            (prefLang) =>
-              language.toLowerCase().includes(prefLang) || prefLang.includes(language.toLowerCase())
-          );
+          preferredLanguages.some((preferred) => languagesMatch(preferred, language));
 
         if (!shouldDownload) {
           log(`Skipping subtitle: ${language} (not in preferred languages)`);
