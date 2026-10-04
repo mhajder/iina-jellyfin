@@ -44,6 +44,24 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       if (!data) return;
       this.servers = data.servers || [];
       this.activeServerId = data.activeServerId || null;
+      // The plugin answers switches in the order they were requested, so while
+      // this view still waits for one, any list it sends predates that switch.
+      // A request for a server the plugin no longer has will never be answered.
+      this.requestedSwitches = (this.requestedSwitches || []).filter((id) =>
+        this.servers.some((server) => server.id === id)
+      );
+      if (this.requestedSwitches.length > 0) {
+        this.activeServerId = this.requestedSwitches[this.requestedSwitches.length - 1];
+      }
+      this.adoptStoredServerId();
+      // The other browser view removed the server this one is connecting to.
+      if (
+        this.connectingServerId &&
+        !this.servers.some((server) => server.id === this.connectingServerId)
+      ) {
+        debugLog(`Server ${this.connectingServerId} was removed while connecting`);
+        this.abandonConnect();
+      }
       this.renderServerList();
 
       if (!this.initialAutoConnectDone && !this.currentServer) {
@@ -58,6 +76,28 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           // means the plugin has not sent the servers yet.
           this.initialAutoConnectDone = true;
         }
+      }
+    },
+
+    /**
+     * Password, Quick Connect and legacy-session connections start without the
+     * plugin's stored id; it only exists once the plugin has saved the session
+     * and sent the list back. Without it, removing or disconnecting that server
+     * cannot tell it is the connected one.
+     */
+    adoptStoredServerId() {
+      if (!this.currentServer || this.currentServer.serverId) return;
+
+      const url = String(this.currentServer.url || '').replace(/\/$/, '');
+      const stored = this.servers.find(
+        (server) =>
+          server.serverUrl &&
+          server.serverUrl.replace(/\/$/, '') === url &&
+          server.userId === this.currentServer.userId
+      );
+      if (stored) {
+        this.currentServer.serverId = stored.id;
+        debugLog(`Connected server identified as: ${stored.id}`);
       }
     },
 
@@ -112,16 +152,126 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
       debugLog(`Switching to server: ${server.serverName}`);
       this.activeServerId = serverId;
+      // A chosen server replaces the initial auto-connect; otherwise the next
+      // server list would start connecting to the stored active server too.
+      this.initialAutoConnectDone = true;
 
-      if (typeof iina !== 'undefined' && iina.postMessage) {
-        iina.postMessage('switch-server', { serverId });
-      }
-
+      this.requestSwitch(serverId);
       this.connectToServer(server);
       this.renderServerList();
     },
 
+    /**
+     * The server being connected was removed. Stay on the server still
+     * connected, if any, and point the plugin's active server back at it;
+     * otherwise disconnect. Finishing the connect would store the removed
+     * server again.
+     */
+    abandonConnect() {
+      const removedId = this.connectingServerId;
+      this.cancelPendingConnect();
+      this.requestedSwitches = (this.requestedSwitches || []).filter((id) => id !== removedId);
+      if (this.currentServer && this.currentUser) {
+        const stayId = this.currentServer.serverId;
+        if (stayId && this.servers.some((server) => server.id === stayId)) {
+          this.activeServerId = stayId;
+          this.requestSwitch(stayId);
+        }
+        this.updateServerStatus(
+          `Connected to ${this.currentServer.name} as ${this.currentUser.Name}`,
+          'connected'
+        );
+      } else {
+        this.disconnectFromServer();
+      }
+    },
+
+    /**
+     * Make the plugin's stored active server follow this view. The plugin
+     * echoes the switch to both views; this view remembers its requests so it
+     * can recognise the echoes.
+     */
+    requestSwitch(serverId) {
+      if (typeof iina !== 'undefined' && iina.postMessage) {
+        this.requestedSwitches = this.requestedSwitches || [];
+        this.requestedSwitches.push(serverId);
+        iina.postMessage('switch-server', { serverId });
+      }
+    },
+
+    /**
+     * The plugin announces every switch to both browser views, including the
+     * one that asked for it and has already started connecting. Connecting
+     * again there would only race the first attempt.
+     */
+    handleServerSwitched(data) {
+      if (!data || !data.server) return;
+
+      const serverId = data.server.id;
+      // The echo of a switch this view asked for: it connected directly
+      // already, and may have switched again since, so the echo is old news.
+      const ownIndex = (this.requestedSwitches || []).indexOf(serverId);
+      if (ownIndex >= 0) {
+        this.requestedSwitches.splice(0, ownIndex + 1);
+        this.handleServersList({ ...data, activeServerId: serverId });
+        debugLog(`Echo of this view's switch to ${serverId}, already handled`);
+        return;
+      }
+
+      this.handleServersList(data);
+      // Another view switched before this view's own pending switch reached
+      // the plugin, so this view's newer choice wins.
+      if (this.requestedSwitches.length > 0) {
+        debugLog(`Switch to ${serverId} predates this view's own switch, not following it`);
+        return;
+      }
+
+      // While another server is still connecting, the current one is about to
+      // be replaced, so being connected to it does not make the echo redundant.
+      const alreadyThere = this.connectingServerId
+        ? serverId === this.connectingServerId
+        : this.isConnectedTo(serverId);
+      if (serverId && alreadyThere) {
+        debugLog(`Already connecting or connected to server ${serverId}, skipping reconnect`);
+        return;
+      }
+      this.connectToServer(data.server);
+    },
+
+    isConnectedTo(serverId) {
+      return Boolean(this.currentServer && this.currentServer.serverId === serverId);
+    },
+
+    /**
+     * Drop any connection still in flight so it cannot replace the server the
+     * user chose afterwards.
+     */
+    cancelPendingConnect() {
+      this.connectRequestCounter = (this.connectRequestCounter || 0) + 1;
+      this.connectingServerId = null;
+    },
+
+    /**
+     * A finished login replaces connects that were already running when it
+     * started, but not a server the user picked while it was in progress.
+     */
+    cancelConnectsStartedBefore(connectsAtStart) {
+      if ((this.connectRequestCounter || 0) === connectsAtStart) {
+        this.cancelPendingConnect();
+      }
+    },
+
     async connectToServer(serverData) {
+      // Only the latest attempt may update the view: a slower response for a
+      // server the user has since switched away from must not win.
+      const requestId = (this.connectRequestCounter = (this.connectRequestCounter || 0) + 1);
+      const isStale = () => {
+        if (requestId === this.connectRequestCounter) return false;
+        debugLog(`Connect request #${requestId} is stale, ignoring`);
+        return true;
+      };
+      this.connectingServerId = serverData.id || serverData.serverId || null;
+
       try {
         debugLog('Connecting to server: ' + serverData.serverUrl);
         this.updateServerStatus('Connecting...', 'connecting');
@@ -131,6 +281,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             Authorization: this.buildAuthorizationHeader(serverData.accessToken),
           },
         });
+        if (isStale()) return;
 
         if (response.status === 200 && response.data) {
           const userResponse = await this.getHttpClient().get(`${serverData.serverUrl}/Users/Me`, {
@@ -138,6 +289,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
               Authorization: this.buildAuthorizationHeader(serverData.accessToken),
             },
           });
+          if (isStale()) return;
 
           if (userResponse.status === 200 && userResponse.data) {
             this.currentServer = {
@@ -179,8 +331,13 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         this.updateServerStatus('Session expired - please login again', 'error');
         this.showLoginFormWithServer(serverData.serverUrl);
       } catch (error) {
+        if (isStale()) return;
         debugLog('Connection failed: ' + error.message);
         this.updateServerStatus('Connection failed - check server', 'error');
+      } finally {
+        if (requestId === this.connectRequestCounter) {
+          this.connectingServerId = null;
+        }
       }
     },
 
@@ -204,8 +361,17 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         this.activeServerId = this.servers.length > 0 ? this.servers[0].id : null;
       }
 
-      if (this.currentServer && this.currentServer.serverId === serverId) {
+      if (this.isConnectedTo(serverId) && this.connectingServerId) {
+        // Already switching to another server: drop the removed one but let
+        // that connect finish.
+        this.currentServer = null;
+        this.currentUser = null;
+        this.clearAllMediaContent();
+        this.hideMainContent();
+      } else if (this.isConnectedTo(serverId)) {
         this.disconnectFromServer();
+      } else if (this.connectingServerId === serverId) {
+        this.abandonConnect();
       }
 
       this.renderServerList();
@@ -302,6 +468,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
     disconnectFromServer() {
       debugLog('Disconnecting from current server');
+      this.cancelPendingConnect();
       this.currentUser = null;
       this.currentServer = null;
       this.activeServerId = null;
@@ -443,6 +610,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
         this.qcSecret = initiateResponse.data.Secret;
         this.qcServerUrl = normalizedUrl;
+        // A server picked while waiting for approval must outlive the login.
+        this.qcConnectsAtStart = this.connectRequestCounter || 0;
 
         document.getElementById('qcCode').textContent = initiateResponse.data.Code;
         document.getElementById('qcCodeSection').style.display = 'block';
@@ -510,6 +679,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         debugLog('Quick Connect was cancelled before authentication, ignoring');
         return;
       }
+      const connectsAtStart = this.qcConnectsAtStart ?? (this.connectRequestCounter || 0);
 
       try {
         const httpClient = this.getHttpClient();
@@ -545,6 +715,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             debugLog('Could not get server info: ' + infoError);
           }
 
+          this.cancelConnectsStartedBefore(connectsAtStart);
           this.currentServer = {
             name: serverName,
             url: this.qcServerUrl,
@@ -613,6 +784,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         errorEl.textContent = 'Please fill in all fields';
         return;
       }
+      const connectsAtStart = this.connectRequestCounter || 0;
 
       let normalizedUrl;
       try {
@@ -642,6 +814,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         if (authResult.success) {
           debugLog('Authentication successful');
 
+          this.cancelConnectsStartedBefore(connectsAtStart);
           this.currentServer = {
             name: authResult.serverName || normalizedUrl,
             url: normalizedUrl,

@@ -380,10 +380,7 @@ class JellyfinSidebar {
 
       iina.onMessage('server-switched', (data) => {
         debugLog('Received server-switched: ' + JSON.stringify(data));
-        if (data && data.server) {
-          this.handleServersList(data);
-          this.connectToServer(data.server);
-        }
+        this.handleServerSwitched(data);
       });
     } else {
       debugLog('iina.onMessage not available, session auto-login disabled');
