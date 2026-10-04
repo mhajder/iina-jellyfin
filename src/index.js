@@ -89,6 +89,7 @@ debugLog('Jellyfin Subtitles Plugin loaded');
 const {
   startPlaybackTracking,
   stopPlaybackTracking,
+  markTrackedFileEnded,
   handlePauseChange,
   getCurrentPlaybackSession,
 } = createPlaybackTrackingManager({
@@ -619,11 +620,13 @@ event.on('mpv.end-file', () => {
   if (isReplacingPlayback) {
     // File is being replaced (e.g. episode transition) — don't send stop report
     debugLog('File replacement in progress, skipping stop report');
+    markTrackedFileEnded();
     return;
   }
   if (queuedForAutoplay) {
     // Next episode is queued via insert-next — mpv will auto-advance
     debugLog('Autoplay queued, mpv will play next episode — skipping stop cleanup');
+    markTrackedFileEnded();
     // Reset for the next cycle (setupAutoplayForEpisode will re-set these)
     clearQueuedFlag();
     return;

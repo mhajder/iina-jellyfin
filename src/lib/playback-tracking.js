@@ -22,6 +22,10 @@ function createPlaybackTrackingManager({
   // the beginning. Only after a position above 0 has been seen is 0 a real
   // playback position worth reporting.
   let hasStartedPlayback = false;
+  // Set when mpv ended the tracked file but the stop is deferred until the next
+  // file loads. core.status then describes the next file, so its position must
+  // not be read for this one.
+  let trackedFileEnded = false;
   let playbackTickCount = 0;
   let playbackTickTimer = null;
 
@@ -462,7 +466,8 @@ function createPlaybackTrackingManager({
   }
 
   function handlePauseChange() {
-    if (!currentPlaybackSession) return;
+    // After the tracked file ended, core.status describes the next file.
+    if (!currentPlaybackSession || trackedFileEnded) return;
 
     try {
       const position = samplePosition();
@@ -491,6 +496,18 @@ function createPlaybackTrackingManager({
     }
   }
 
+  /**
+   * The tracked file ended but its stop report waits for the next file. Freeze
+   * the last sampled position so the tick cannot overwrite it with the next
+   * file's.
+   */
+  function markTrackedFileEnded() {
+    if (!currentPlaybackSession) return;
+
+    trackedFileEnded = true;
+    stopPlaybackTick();
+  }
+
   function stopPlaybackTracking() {
     // Invalidate any start that is still waiting on its playback info request,
     // even when there is no session to stop yet.
@@ -502,13 +519,15 @@ function createPlaybackTrackingManager({
       const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
 
       let finalPosition = lastKnownPosition;
-      try {
-        const position = samplePosition();
-        if (position !== null) {
-          finalPosition = position;
+      if (!trackedFileEnded) {
+        try {
+          const position = samplePosition();
+          if (position !== null) {
+            finalPosition = position;
+          }
+        } catch {
+          log(`Could not get final position from core, using lastKnownPosition: ${finalPosition}`);
         }
-      } catch {
-        log(`Could not get final position from core, using lastKnownPosition: ${finalPosition}`);
       }
 
       if (!hasStartedPlayback) {
@@ -525,6 +544,7 @@ function createPlaybackTrackingManager({
       lastReportedPosition = 0;
       lastKnownPosition = 0;
       hasStartedPlayback = false;
+      trackedFileEnded = false;
       log('Playback session ended');
     }
   }
@@ -536,6 +556,7 @@ function createPlaybackTrackingManager({
   return {
     startPlaybackTracking,
     stopPlaybackTracking,
+    markTrackedFileEnded,
     handlePauseChange,
     markAsWatched,
     getCurrentPlaybackSession,
