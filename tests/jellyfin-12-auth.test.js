@@ -124,3 +124,43 @@ test('source contains no legacy Jellyfin credential transport', () => {
     assert.doesNotMatch(source, /[?&]api_key=/);
   }
 });
+
+test('a Quick Connect login cancelled in flight is not used', async () => {
+  const posts = [];
+  const methods = loadSidebarMethods(
+    'src/ui/sidebar/lib/auth-server-methods.js',
+    'createSidebarAuthServerMethods'
+  );
+  const client = {
+    ...methods,
+    clientIdentity: { clientName: 'c', deviceName: 'd', deviceId: 'id', version: '1' },
+    qcServerUrl: 'https://jf.example',
+    qcSecret: 'secret',
+    getHttpClient() {
+      return {
+        post: async (url, options) => {
+          posts.push({ url, authorization: options.headers.Authorization });
+          if (url.endsWith('/Users/AuthenticateWithQuickConnect')) {
+            // The user presses Cancel while this request is in flight
+            client.qcSecret = null;
+            client.qcServerUrl = null;
+            return { status: 200, data: { AccessToken: 'NEW', User: { Id: 'u', Name: 'n' } } };
+          }
+          return { status: 204 };
+        },
+        get: async () => ({ status: 200, data: {} }),
+      };
+    },
+  };
+
+  await client.authenticateWithQuickConnect();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(client.currentServer, undefined);
+  // Logging the token out would end every session with the plugin's shared
+  // DeviceId, including one that is playing, so it is only dropped.
+  assert.deepEqual(
+    posts.map((post) => post.url),
+    ['https://jf.example/Users/AuthenticateWithQuickConnect']
+  );
+});

@@ -248,10 +248,11 @@ function createJellyfinApi({ http, preferences, log }) {
 }
 
 /**
- * Compare two Jellyfin base URLs by host, port and path, ignoring the scheme
- * and any trailing slash, so http/https of the same server still count as one
- * server while two servers behind subpaths of one host (host/jf-a, host/jf-b)
- * do not.
+ * Compare two Jellyfin base URLs by host, port and path, ignoring the scheme,
+ * case and any trailing slash, so http/https of the same server still count
+ * as one server while two servers behind subpaths of one host (host/jf-a,
+ * host/jf-b) do not. Jellyfin matches its base URL without case, so
+ * /Jellyfin and /jellyfin are the same server.
  */
 function isSameJellyfinServer(left, right) {
   const baseOf = (url) =>

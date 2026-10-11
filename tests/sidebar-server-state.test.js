@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadCommonJs } from './helpers/load-commonjs.js';
 
 function createClient(globals = {}) {
   const context = vm.createContext({ window: {}, ...globals });
@@ -345,4 +346,71 @@ test('a fresh login is identified before a removed connect is abandoned', () => 
   assert.equal(client.currentServer.serverId, 'srv-a');
   assert.equal(client.activeServerId, 'srv-a');
   assert.equal(posted.filter((m) => m.name === 'switch-server').at(-1).data.serverId, 'srv-a');
+});
+
+test('a played link from another spelling of a signed-in server adds no second entry', () => {
+  const { store } = createStore([
+    { id: 'srv-1', serverUrl: 'https://Jellyfin.example.com', accessToken: 'T', userId: 'U' },
+  ]);
+
+  store.storeJellyfinSession('http://jellyfin.example.com/', 'URLKEY');
+
+  assert.deepEqual(
+    [...store.loadStoredServers()].map((server) => server.id),
+    ['srv-1']
+  );
+});
+
+function createStore(servers, extraPrefs = {}) {
+  const { createServerSessionStore } = loadCommonJs('src/lib/server-session-store.js');
+  const { isSameJellyfinServer } = loadCommonJs('src/lib/jellyfin-api.js');
+  const prefs = { jellyfin_servers: JSON.stringify(servers), ...extraPrefs };
+  const store = createServerSessionStore({
+    preferences: { get: (key) => prefs[key], set: (key, value) => (prefs[key] = value), sync() {} },
+    sidebar: null,
+    standaloneWindow: null,
+    isSameJellyfinServer,
+    log() {},
+  });
+  return {
+    store,
+    prefs,
+    urls: () => [...store.loadStoredServers()].map((server) => server.serverUrl),
+  };
+}
+
+test('a played http link does not downgrade a stored https server', () => {
+  const { store, urls } = createStore([
+    { id: 'srv-1', serverUrl: 'https://jf.example.com', accessToken: 'OLD' },
+  ]);
+
+  store.storeJellyfinSession('http://jf.example.com', 'NEW');
+
+  assert.deepEqual(urls(), ['https://jf.example.com']);
+});
+
+test('a played https link upgrades a stored http server', () => {
+  const { store, urls } = createStore([
+    { id: 'srv-1', serverUrl: 'http://jf.example.com', accessToken: 'OLD' },
+  ]);
+
+  store.storeJellyfinSession('https://jf.example.com', 'NEW');
+
+  assert.deepEqual(urls(), ['https://jf.example.com']);
+});
+
+test('dropping the active duplicate makes its signed-in entry the active server', () => {
+  const { store, prefs } = createStore(
+    [
+      { id: 'srv-x', serverUrl: 'https://other.example', accessToken: 'X', userId: 'UX' },
+      { id: 'srv-1', serverUrl: 'https://host', accessToken: 'T', userId: 'U' },
+      { id: 'srv-2', serverUrl: 'http://host', accessToken: 'URLKEY' },
+    ],
+    { jellyfin_active_server_id: 'srv-2' }
+  );
+
+  store.loadStoredServers();
+
+  assert.equal(prefs.jellyfin_active_server_id, 'srv-1');
+  assert.equal(store.getActiveServer().id, 'srv-1');
 });

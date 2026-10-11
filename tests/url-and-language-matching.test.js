@@ -140,6 +140,7 @@ test('servers behind different subpaths of one host are different servers', () =
 
 test('scheme, case and trailing slashes do not split one server', () => {
   assert.equal(isSameJellyfinServer('https://Host/jellyfin/', 'http://host/jellyfin'), true);
+  assert.equal(isSameJellyfinServer('https://host/Jellyfin', 'https://host/jellyfin'), true);
   assert.equal(isSameJellyfinServer('https://host:8096', 'https://host:8096/'), true);
   assert.equal(isSameJellyfinServer('', ''), false);
   assert.equal(isSameJellyfinServer(undefined, 'https://host'), false);
