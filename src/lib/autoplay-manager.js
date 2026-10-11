@@ -7,6 +7,7 @@ function createAutoplayManager({
   preferences,
   buildJellyfinHeaders,
   fetchItemMetadata,
+  mediaTitleOption,
   log,
 }) {
   let lastProcessedEpisodeId = null;
@@ -213,12 +214,11 @@ function createAutoplayManager({
         log('Could not clean playlist (non-critical)');
       }
 
-      mpv.command('loadfile', [
-        nextEpisode.playUrl,
-        'insert-next',
-        '-1',
-        `force-media-title=${episodeTitle}`,
-      ]);
+      const args = [nextEpisode.playUrl, 'insert-next'];
+      if (preferences.get('set_video_title')) {
+        args.push('-1', mediaTitleOption(episodeTitle));
+      }
+      mpv.command('loadfile', args);
 
       autoplayQueued = true;
 

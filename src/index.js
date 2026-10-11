@@ -7,7 +7,7 @@ const { createJellyfinApi, isSameJellyfinServer } = require('./lib/jellyfin-api.
 const { createServerSessionStore } = require('./lib/server-session-store.js');
 const { createPlaybackTrackingManager } = require('./lib/playback-tracking.js');
 const { createAutoplayManager } = require('./lib/autoplay-manager.js');
-const { createMediaActionsManager } = require('./lib/media-actions.js');
+const { createMediaActionsManager, mediaTitleOption } = require('./lib/media-actions.js');
 
 const {
   core,
@@ -69,7 +69,8 @@ const {
 
 // Title, autoplay, subtitles and playback tracking each need the loaded
 // item's metadata or playback info. They share one request per file and
-// credentials, which is forgotten when the file ends, when a request fails,
+// credentials, which is forgotten when the file ends (so the title fetched by
+// the on_load hook is reused once the file has loaded), when a request fails,
 // and when the menu retries an action.
 let itemRequests = new Map();
 
@@ -133,8 +134,8 @@ const {
   preferences,
   buildJellyfinHeaders,
   fetchPlaybackInfo,
-  // Never shared: a request made for the title can predate the previous
-  // session's stop report, and resume needs the position after it lands.
+  // Never shared: the title hook can fetch the item before the previous
+  // session's stop report has landed, and resume needs the position after it.
   fetchItemMetadata: fetchItemMetadataUncached,
   secondsToTicks,
   ticksToSeconds,
@@ -149,10 +150,12 @@ const { setupAutoplayForEpisode, resetForNewFile, clearQueuedFlag, isQueued } =
     preferences,
     buildJellyfinHeaders,
     fetchItemMetadata,
+    mediaTitleOption,
     log: debugLog,
   });
 
 const {
+  applyTitleBeforeLoad,
   setVideoTitleFromMetadata,
   downloadAllSubtitles,
   manualDownloadSubtitles,
@@ -567,20 +570,24 @@ function flushPendingPlaylistQueue(fileUrl) {
     return;
   }
 
-  try {
-    // loadfile carries per-file options, so each queued entry keeps its own
-    // title instead of showing a raw URL in the playlist.
-    for (const item of items) {
+  // loadfile carries per-file options, so each queued entry keeps its own
+  // title instead of showing a raw URL in the playlist. One failing entry must
+  // not drop the rest of the list.
+  const setTitles = preferences.get('set_video_title');
+  let appended = 0;
+  for (const item of items) {
+    try {
       const args = [item.streamUrl, 'append'];
-      if (item.title) {
-        args.push('-1', `force-media-title=${item.title}`);
+      if (item.title && setTitles) {
+        args.push('-1', mediaTitleOption(item.title));
       }
       mpv.command('loadfile', args);
+      appended++;
+    } catch (error) {
+      debugLog(`Could not append queued item "${item.title}": ${error}`);
     }
-    debugLog(`Appended ${items.length} queued item(s) to the playlist`);
-  } catch (error) {
-    debugLog('Could not append queued items: ' + error);
   }
+  debugLog(`Appended ${appended} of ${items.length} queued item(s) to the playlist`);
 }
 
 /**
@@ -665,6 +672,18 @@ function handlePlayMedia(message) {
 
 // Event handlers
 event.on('iina.file-loaded', onFileLoaded);
+
+// Holds the load until the Jellyfin title is set, so the playlist entry gets
+// it too. IINA only waits for next() when the callback is an async function.
+mpv.addHook('on_load', 50, async (next) => {
+  try {
+    await applyTitleBeforeLoad(mpv.getString('stream-open-filename'));
+  } catch (error) {
+    debugLog(`Could not set the title before loading: ${error.message}`);
+  } finally {
+    next();
+  }
+});
 
 // Position is sampled by the playback tracking tick. IINA does not observe
 // mpv's time-pos property, so there is no mpv.time-pos.changed event to
