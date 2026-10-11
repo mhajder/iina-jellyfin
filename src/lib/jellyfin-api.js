@@ -160,6 +160,16 @@ function createJellyfinApi({ http, preferences, log }) {
     );
   }
 
+  /**
+   * IINA's http resolves for every status, so an error page would otherwise
+   * pass for data, and the per-file request cache would keep it for the file.
+   */
+  function throwOnErrorStatus(response) {
+    if (response.statusCode >= 400) {
+      throw new Error(`Jellyfin API returned status ${response.statusCode}`);
+    }
+  }
+
   async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     try {
       const playbackUrl = `${serverBase}/Items/${itemId}/PlaybackInfo?ApiKey=${apiKey}`;
@@ -173,6 +183,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
       log('Response received');
 
+      throwOnErrorStatus(response);
       if (!response.data) {
         throw new Error('No data received from Jellyfin API');
       }
@@ -207,6 +218,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
       log('Metadata response received');
 
+      throwOnErrorStatus(response);
       if (!response.data) {
         throw new Error('No metadata received from Jellyfin API');
       }
