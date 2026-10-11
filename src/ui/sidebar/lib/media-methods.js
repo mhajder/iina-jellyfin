@@ -738,6 +738,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       this.selectedSeason = null;
       document.getElementById('playEpisodeBtn').disabled = true;
       document.getElementById('openEpisodeInJellyfinBtn').disabled = true;
+      // A slower response for a series viewed before this one must not fill
+      // the season list, and its episodes must not land under this series.
+      const requestId = this.nextRequestId('seasons');
+      this.nextRequestId('episodes');
+      // The previous series' seasons must not be pickable while these load.
+      document.getElementById('seasonSelect').innerHTML =
+        '<option value="">Loading seasons...</option>';
 
       try {
         const params = new URLSearchParams({
@@ -753,21 +760,30 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           }
         );
 
+        if (!this.isLatestRequest('seasons', requestId)) return;
+
         const seasonSelect = document.getElementById('seasonSelect');
         seasonSelect.innerHTML = '<option value="">Select a season...</option>';
 
         if (response.data && response.data.Items) {
           response.data.Items.forEach((season) => {
-            if (season.IndexNumber !== undefined) {
-              const option = document.createElement('option');
-              option.value = season.Id;
-              option.textContent = `Season ${season.IndexNumber}`;
-              seasonSelect.appendChild(option);
-            }
+            // Jellyfin can send null for an unnumbered season. It is listed by
+            // name rather than as "Season null", and not hidden, or its
+            // episodes could not be reached at all.
+            const isNumbered = season.IndexNumber !== undefined && season.IndexNumber !== null;
+            const label = isNumbered ? `Season ${season.IndexNumber}` : season.Name;
+            if (!label) return;
+            const option = document.createElement('option');
+            option.value = season.Id;
+            option.textContent = label;
+            seasonSelect.appendChild(option);
           });
         }
       } catch (error) {
+        if (!this.isLatestRequest('seasons', requestId)) return;
         debugLog('Error loading seasons:', error);
+        document.getElementById('seasonSelect').innerHTML =
+          '<option value="">No seasons loaded</option>';
         document.getElementById('episodeList').innerHTML =
           '<div class="error">Failed to load seasons</div>';
       }
