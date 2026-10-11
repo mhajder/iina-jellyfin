@@ -15,7 +15,6 @@ function createPlaybackTrackingManager({
   // Bumped by every start and stop so an in-flight startPlaybackTracking can
   // tell that its session is no longer the one being played.
   let sessionRequestCounter = 0;
-  let lastReportedPosition = 0;
   let lastKnownPosition = 0;
   // A position of 0 means two different things: the file has not started yet
   // (including the moment before the resume seek runs), or the user rewound to
@@ -28,6 +27,25 @@ function createPlaybackTrackingManager({
   let trackedFileEnded = false;
   let playbackTickCount = 0;
   let playbackTickTimer = null;
+  // The last stop report sent. Reopening the same item reads its resume point
+  // only after this has landed, or the server still has the older position.
+  // The wait is capped: a slow report must not hold the resume seek back
+  // until the first progress report has already overwritten the position.
+  let pendingStopReport = null;
+  const STOP_REPORT_WAIT_MS = 3000;
+
+  function waitForStopReportOf(serverBase, itemId) {
+    const pending = pendingStopReport;
+    if (!pending || pending.serverBase !== serverBase || pending.itemId !== itemId) {
+      return Promise.resolve();
+    }
+
+    let timer = null;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(resolve, STOP_REPORT_WAIT_MS);
+    });
+    return Promise.race([pending.report, timeout]).finally(() => clearTimeout(timer));
+  }
 
   /**
    * Current playback position, or null when it carries no information yet.
@@ -45,6 +63,17 @@ function createPlaybackTrackingManager({
     }
 
     return hasStartedPlayback ? 0 : null;
+  }
+
+  /**
+   * The position a progress report should carry. Until playback has started
+   * the sampled 0 says nothing, and Jellyfin saves every reported position as
+   * the resume point, so the position the server already has is sent back
+   * instead, or nothing while that is not known yet.
+   */
+  function reportablePosition() {
+    if (hasStartedPlayback) return lastKnownPosition;
+    return currentPlaybackSession.resumePosition ?? null;
   }
 
   const PLAYBACK_TICK_INTERVAL = 1000;
@@ -68,14 +97,15 @@ function createPlaybackTrackingManager({
       const playbackPositionTicks = metadata.UserData.PlaybackPositionTicks;
       const played = metadata.UserData.Played;
 
+      // 0 is a known position; null below means the server's is unknown.
       if (played) {
         log('Item already marked as played, not resuming');
-        return null;
+        return 0;
       }
 
       if (!playbackPositionTicks || playbackPositionTicks === 0) {
         log('No resume position available');
-        return null;
+        return 0;
       }
 
       const positionSeconds = ticksToSeconds(playbackPositionTicks);
@@ -95,12 +125,14 @@ function createPlaybackTrackingManager({
     const session = currentPlaybackSession;
 
     try {
+      await waitForStopReportOf(serverBase, itemId);
       const resumePosition = await fetchResumePosition(serverBase, itemId, apiKey);
 
       // Keep what the server had, so stopping without playing anything can
-      // report it back unchanged instead of resetting the item.
+      // report it back unchanged instead of resetting the item. A failed
+      // lookup stays null: the position is unknown, not 0.
       if (session) {
-        session.resumePosition = resumePosition ?? 0;
+        session.resumePosition = resumePosition;
       }
 
       if (resumePosition === null || resumePosition < 15) {
@@ -230,7 +262,8 @@ function createPlaybackTrackingManager({
     apiKey,
     positionSeconds,
     playSessionId,
-    mediaSourceId
+    mediaSourceId,
+    failed = false
   ) {
     try {
       if (!preferences.get('sync_playback_progress')) {
@@ -253,6 +286,7 @@ function createPlaybackTrackingManager({
           MediaSourceId: mediaSourceId || itemId,
           PlaySessionId: playSessionId,
           PositionTicks: positionTicks,
+          Failed: failed,
         },
       });
 
@@ -407,17 +441,18 @@ function createPlaybackTrackingManager({
           const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } =
             currentPlaybackSession;
 
-          reportPlaybackProgress(
-            serverBase,
-            itemId,
-            apiKey,
-            lastKnownPosition,
-            playSessionId,
-            mediaSourceId,
-            isPaused
-          );
-
-          lastReportedPosition = lastKnownPosition;
+          const reportPosition = reportablePosition();
+          if (reportPosition !== null) {
+            reportPlaybackProgress(
+              serverBase,
+              itemId,
+              apiKey,
+              reportPosition,
+              playSessionId,
+              mediaSourceId,
+              isPaused
+            );
+          }
 
           const duration = currentPlaybackSession.duration;
           if (duration && !currentPlaybackSession.hasReportedWatched) {
@@ -480,11 +515,17 @@ function createPlaybackTrackingManager({
 
       const { serverBase, itemId, apiKey, playSessionId, mediaSourceId } = currentPlaybackSession;
 
+      const reportPosition = reportablePosition();
+      if (reportPosition === null) {
+        log('Playback has not started yet, not reporting the pause');
+        return;
+      }
+
       reportPlaybackProgress(
         serverBase,
         itemId,
         apiKey,
-        lastKnownPosition,
+        reportPosition,
         playSessionId,
         mediaSourceId,
         isPaused
@@ -530,18 +571,39 @@ function createPlaybackTrackingManager({
         }
       }
 
+      // Nothing ever played, so report what the item already had. Sending 0
+      // here would drop it out of Continue Watching just for being opened.
+      // When that is unknown too, the stop is sent as failed: Jellyfin then
+      // ends the session without touching the saved position, where leaving
+      // the position out would mark the item played.
+      let failed = false;
       if (!hasStartedPlayback) {
-        // Nothing ever played, so report what the item already had. Sending 0
-        // here would drop it out of Continue Watching just for being opened.
-        const preserved = currentPlaybackSession.resumePosition ?? lastReportedPosition;
-        log(`No playback observed, reporting the stored position (${preserved}s)`);
-        finalPosition = preserved;
+        const preserved = currentPlaybackSession.resumePosition;
+        if (preserved === null || preserved === undefined) {
+          log('No playback observed and the stored position is unknown, stopping as failed');
+          failed = true;
+          finalPosition = 0;
+        } else {
+          log(`No playback observed, reporting the stored position (${preserved}s)`);
+          finalPosition = preserved;
+        }
       }
 
-      reportPlaybackStop(serverBase, itemId, apiKey, finalPosition, playSessionId, mediaSourceId);
+      pendingStopReport = {
+        serverBase,
+        itemId,
+        report: reportPlaybackStop(
+          serverBase,
+          itemId,
+          apiKey,
+          finalPosition,
+          playSessionId,
+          mediaSourceId,
+          failed
+        ),
+      };
 
       currentPlaybackSession = null;
-      lastReportedPosition = 0;
       lastKnownPosition = 0;
       hasStartedPlayback = false;
       trackedFileEnded = false;
