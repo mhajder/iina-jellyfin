@@ -87,6 +87,7 @@ const {
   preferences,
   sidebar,
   standaloneWindow,
+  isSameJellyfinServer,
   log: debugLog,
 });
 

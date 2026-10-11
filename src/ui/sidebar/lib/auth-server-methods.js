@@ -679,20 +679,33 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         debugLog('Quick Connect was cancelled before authentication, ignoring');
         return;
       }
+      // Held locally: cancelling while a request below is in flight clears
+      // the fields, and the login must neither finish nor use null values.
+      const qcServerUrl = this.qcServerUrl;
+      const qcSecret = this.qcSecret;
+      // Logging in clears the fields too, which is not a cancellation: an
+      // error after that point must still be reported.
+      let loggedIn = false;
+      const isCancelled = () => !loggedIn && this.qcSecret !== qcSecret;
       const connectsAtStart = this.qcConnectsAtStart ?? (this.connectRequestCounter || 0);
 
       try {
         const httpClient = this.getHttpClient();
         const response = await httpClient.post(
-          `${this.qcServerUrl}/Users/AuthenticateWithQuickConnect`,
+          `${qcServerUrl}/Users/AuthenticateWithQuickConnect`,
           {
             headers: {
               'Content-Type': 'application/json',
               Authorization: this.buildAuthorizationHeader(),
             },
-            data: JSON.stringify({ Secret: this.qcSecret }),
+            data: JSON.stringify({ Secret: qcSecret }),
           }
         );
+
+        if (isCancelled()) {
+          debugLog('Quick Connect was cancelled during authentication, ignoring');
+          return;
+        }
 
         debugLog('Quick Connect auth response', {
           status: response.status,
@@ -705,9 +718,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           const accessToken = response.data.AccessToken;
           const user = response.data.User;
 
-          let serverName = this.qcServerUrl;
+          let serverName = qcServerUrl;
           try {
-            const infoResponse = await httpClient.get(`${this.qcServerUrl}/System/Info/Public`);
+            const infoResponse = await httpClient.get(`${qcServerUrl}/System/Info/Public`);
             if (infoResponse.data && infoResponse.data.ServerName) {
               serverName = infoResponse.data.ServerName;
             }
@@ -715,18 +728,23 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             debugLog('Could not get server info: ' + infoError);
           }
 
+          if (isCancelled()) {
+            debugLog('Quick Connect was cancelled during authentication, ignoring');
+            return;
+          }
+
           this.cancelConnectsStartedBefore(connectsAtStart);
           this.currentServer = {
             name: serverName,
-            url: this.qcServerUrl,
+            url: qcServerUrl,
             userId: user.Id,
             accessToken: accessToken,
           };
           this.currentUser = user;
 
-          this.storeSessionData(this.qcServerUrl, accessToken, serverName, user.Id, user.Name);
+          this.storeSessionData(qcServerUrl, accessToken, serverName, user.Id, user.Name);
 
-          const qcServerUrl = this.qcServerUrl;
+          loggedIn = true;
           this.qcSecret = null;
           this.qcServerUrl = null;
 
@@ -743,6 +761,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           this.resetQuickConnectUI();
         }
       } catch (error) {
+        if (isCancelled()) return;
         debugLog('Quick Connect auth error: ' + error.message);
         document.getElementById('qcError').textContent =
           'Authentication failed: ' + (error.message || 'Unknown error');

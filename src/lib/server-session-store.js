@@ -1,6 +1,12 @@
 'use strict';
 
-function createServerSessionStore({ preferences, sidebar, standaloneWindow, log }) {
+function createServerSessionStore({
+  preferences,
+  sidebar,
+  standaloneWindow,
+  isSameJellyfinServer,
+  log,
+}) {
   /**
    * Both browser surfaces show the same server list, and either can be the one
    * the user is acting in, so state changes go to both. Posting to a webview
@@ -32,18 +38,31 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
       // Drop an unverified URL session for a server that is also signed in:
       // the account entry supersedes it, and keeping both shows the server
       // twice in the list.
-      const signedInUrls = new Set(
-        usableServers
-          .filter((server) => server.userId)
-          .map((server) => server.serverUrl.replace(/\/$/, ''))
-      );
+      const signedIn = usableServers.filter((server) => server.userId);
       const validServers = usableServers.filter(
-        (server) => server.userId || !signedInUrls.has(server.serverUrl.replace(/\/$/, ''))
+        (server) =>
+          server.userId ||
+          !signedIn.some((account) => isSameJellyfinServer(account.serverUrl, server.serverUrl))
       );
 
       if (validServers.length !== servers.length) {
         log(`Cleaned ${servers.length - validServers.length} redundant server entries`);
         saveStoredServers(validServers);
+
+        // A dropped URL session may have been the active server. Its account
+        // entry takes over, or the active id would point at nothing and the
+        // first server in the list, possibly an unrelated one, would be used.
+        const activeId = getActiveServerId();
+        const droppedActive = usableServers.find(
+          (server) => server.id === activeId && !validServers.includes(server)
+        );
+        if (droppedActive) {
+          const account = signedIn.find((server) =>
+            isSameJellyfinServer(server.serverUrl, droppedActive.serverUrl)
+          );
+          setActiveServerId(account.id);
+          log(`Active server moved to the signed-in entry ${account.id}`);
+        }
       }
       return validServers;
     } catch {
@@ -76,7 +95,7 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
       const servers = loadStoredServers();
       const normalizedUrl = serverData.serverUrl.replace(/\/$/, '');
 
-      const isSameUrl = (server) => server.serverUrl.replace(/\/$/, '') === normalizedUrl;
+      const isSameUrl = (server) => isSameJellyfinServer(server.serverUrl, normalizedUrl);
 
       // Match the same user on the same server. Failing that, a known user
       // takes over the entry left by a URL session on that server (it is the
@@ -92,10 +111,23 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
         existingIndex = servers.findIndex((server) => isSameUrl(server) && !server.userId);
       }
 
+      // The match can be another spelling of the server (scheme, case). A
+      // played link must not rewrite a stored https:// URL to http://, which
+      // would send the token unencrypted from then on, so a URL session keeps
+      // the stored URL and only moves it up to https. A sign-in uses the URL
+      // the user signed in with.
+      const existingUrl = existingIndex >= 0 ? servers[existingIndex].serverUrl : null;
+      const serverUrl =
+        existingUrl &&
+        !serverData.userId &&
+        !(/^http:/i.test(existingUrl) && /^https:/i.test(normalizedUrl))
+          ? existingUrl
+          : normalizedUrl;
+
       const serverEntry = {
         id: existingIndex >= 0 ? servers[existingIndex].id : `srv-${Date.now()}`,
-        serverUrl: normalizedUrl,
-        serverName: serverData.serverName || normalizedUrl,
+        serverUrl,
+        serverName: serverData.serverName || serverUrl,
         accessToken: serverData.accessToken,
         userId: serverData.userId || '',
         username: serverData.username || '',
@@ -175,7 +207,7 @@ function createServerSessionStore({ preferences, sidebar, standaloneWindow, log 
       // better ones and storing the URL's api_key next to them would leave two
       // entries for the same server in the list.
       const signedIn = loadStoredServers().find(
-        (server) => server.userId && server.serverUrl.replace(/\/$/, '') === normalizedUrl
+        (server) => server.userId && isSameJellyfinServer(server.serverUrl, normalizedUrl)
       );
       if (signedIn) {
         log(
