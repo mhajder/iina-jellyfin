@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.5](https://github.com/mhajder/iina-jellyfin/compare/v0.7.4...v0.7.5) (2026-10-11)
+
+
+### 🐛 Bug Fixes
+
+* give Jellyfin items their title before they load ([#123](https://github.com/mhajder/iina-jellyfin/issues/123)) ([56e8e3b](https://github.com/mhajder/iina-jellyfin/commit/56e8e3bcf494517f6eec9ddb0c42ff83864e0686))
+* keep resume points when nothing has played yet ([#117](https://github.com/mhajder/iina-jellyfin/issues/117)) ([a47a393](https://github.com/mhajder/iina-jellyfin/commit/a47a393046847fea784f967096906b14c18a69a2))
+* match one server across URL spellings ([#118](https://github.com/mhajder/iina-jellyfin/issues/118)) ([eecefd4](https://github.com/mhajder/iina-jellyfin/commit/eecefd4c71594127cc67864677413caeac46c23b))
+* **sidebar:** keep the season list in step with the series ([#119](https://github.com/mhajder/iina-jellyfin/issues/119)) ([fc9abe6](https://github.com/mhajder/iina-jellyfin/commit/fc9abe63b4690cda8f784416c8d021791261df18))
+
+
+### 🧹 Refactoring
+
+* share item requests per file and the browser handlers ([#120](https://github.com/mhajder/iina-jellyfin/issues/120)) ([2311e01](https://github.com/mhajder/iina-jellyfin/commit/2311e0197e1dab47770099a2081dc84732378d8f))
+
 ## [0.7.4](https://github.com/mhajder/iina-jellyfin/compare/v0.7.3...v0.7.4) (2026-10-04)
 
 
