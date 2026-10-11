@@ -57,8 +57,8 @@ const {
   buildJellyfinHeaders,
   parseJellyfinUrl,
   isJellyfinUrl,
-  fetchPlaybackInfo,
-  fetchItemMetadata,
+  fetchPlaybackInfo: fetchPlaybackInfoUncached,
+  fetchItemMetadata: fetchItemMetadataUncached,
   secondsToTicks,
   ticksToSeconds,
 } = createJellyfinApi({
@@ -66,6 +66,34 @@ const {
   preferences,
   log: debugLog,
 });
+
+// Title, autoplay, subtitles and playback tracking each need the loaded
+// item's metadata or playback info. They share one request per file and
+// credentials, which is forgotten when the file ends, when a request fails,
+// and when the menu retries an action.
+let itemRequests = new Map();
+
+function forgetItemRequests() {
+  itemRequests = new Map();
+}
+
+function sharedPerFile(kind, fetcher) {
+  return (serverBase, itemId, apiKey) => {
+    const requests = itemRequests;
+    const key = `${kind}|${serverBase}|${itemId}|${apiKey}`;
+    if (!requests.has(key)) {
+      const request = fetcher(serverBase, itemId, apiKey);
+      requests.set(key, request);
+      request.catch(() => {
+        if (requests.get(key) === request) requests.delete(key);
+      });
+    }
+    return requests.get(key);
+  };
+}
+
+const fetchPlaybackInfo = sharedPerFile('playback-info', fetchPlaybackInfoUncached);
+const fetchItemMetadata = sharedPerFile('metadata', fetchItemMetadataUncached);
 
 // The webviews cannot read preferences, so the debug_logging flag travels with
 // the client identity they request on load.
@@ -105,7 +133,9 @@ const {
   preferences,
   buildJellyfinHeaders,
   fetchPlaybackInfo,
-  fetchItemMetadata,
+  // Never shared: a request made for the title can predate the previous
+  // session's stop report, and resume needs the position after it lands.
+  fetchItemMetadata: fetchItemMetadataUncached,
   secondsToTicks,
   ticksToSeconds,
   log: debugLog,
@@ -222,6 +252,96 @@ function onFileLoaded(fileUrl) {
 }
 
 /**
+ * Messages the browser sends the same way from the sidebar and the standalone
+ * window. Playback requests are registered by each caller, since only the
+ * standalone window closes itself after starting playback.
+ */
+function registerBrowserHandlers(view) {
+  // The webview cannot read preferences, so it asks for the shared Jellyfin
+  // client identity (device id + version) it must authenticate with.
+  view.onMessage('get-client-identity', () => {
+    view.postMessage('client-identity', getWebviewIdentity());
+  });
+
+  view.onMessage('get-session', () => {
+    view.postMessage('session-data', getStoredJellyfinSession());
+  });
+
+  view.onMessage('clear-session', () => {
+    clearJellyfinSession();
+  });
+
+  // Manual login
+  view.onMessage('store-session', (data) => {
+    if (data && data.serverUrl && data.accessToken) {
+      const server = addOrUpdateServer({
+        serverUrl: data.serverUrl,
+        accessToken: data.accessToken,
+        serverName: data.serverName || '',
+        userId: data.userId || '',
+        username: data.username || '',
+      });
+      if (server) {
+        setActiveServerId(server.id);
+        view.postMessage('servers-updated', {
+          servers: loadStoredServers(),
+          activeServerId: server.id,
+        });
+      }
+    }
+  });
+
+  // Multi-server management messages
+  view.onMessage('get-servers', () => {
+    view.postMessage('servers-list', {
+      servers: loadStoredServers(),
+      activeServerId: getActiveServerId(),
+    });
+  });
+
+  view.onMessage('remove-server', (data) => {
+    if (data && data.serverId) {
+      // The store notifies both webviews itself
+      removeServer(data.serverId);
+    }
+  });
+
+  view.onMessage('switch-server', (data) => {
+    if (data && data.serverId) {
+      switchActiveServer(data.serverId);
+    }
+  });
+
+  view.onMessage('open-external-url', (data) => {
+    if (!data || !data.url) {
+      debugLog('Invalid open-external-url message - missing URL');
+      return;
+    }
+
+    debugLog(`Opening external URL: ${data.url}`);
+    let opened = false;
+    try {
+      opened = Boolean(utils.open(data.url));
+    } catch (error) {
+      debugLog(`Failed to open external URL: ${error.message}`);
+    }
+    debugLog(opened ? 'Successfully opened URL in browser' : 'utils.open did not open the URL');
+
+    // The standalone window is used when there is no player window to show
+    // an OSD on, so only the sidebar reports back this way.
+    if (view === sidebar) {
+      if (opened) {
+        core.osd(
+          data.title ? `Opened ${data.title} in browser` : 'Opened Jellyfin page in browser'
+        );
+      } else {
+        core.osd('Failed to open Jellyfin page in browser');
+      }
+    }
+  });
+}
+
+/**
  * Show Jellyfin Browser - handles the case when no window is available
  */
 function showJellyfinBrowser() {
@@ -281,13 +401,7 @@ function openJellyfinStandaloneWindow(sessionData) {
     // messageHub.clearListeners), which would leave the webview unable to
     // reach the plugin at all. Re-registering is safe because the message hub
     // keys listeners by name and replaces the previous callback.
-    standaloneWindow.onMessage('get-client-identity', () => {
-      standaloneWindow.postMessage('client-identity', getWebviewIdentity());
-    });
-
-    standaloneWindow.onMessage('get-session', () => {
-      standaloneWindow.postMessage('session-data', getStoredJellyfinSession());
-    });
+    registerBrowserHandlers(standaloneWindow);
 
     standaloneWindow.onMessage('play-media', (data) => {
       handlePlayMedia(data);
@@ -298,60 +412,6 @@ function openJellyfinStandaloneWindow(sessionData) {
     standaloneWindow.onMessage('play-media-list', (data) => {
       handlePlayMediaList(data);
       standaloneWindow.close();
-    });
-
-    standaloneWindow.onMessage('clear-session', () => {
-      clearJellyfinSession();
-    });
-
-    standaloneWindow.onMessage('store-session', (data) => {
-      if (data && data.serverUrl && data.accessToken) {
-        const server = addOrUpdateServer({
-          serverUrl: data.serverUrl,
-          accessToken: data.accessToken,
-          serverName: data.serverName || '',
-          userId: data.userId || '',
-          username: data.username || '',
-        });
-        if (server) {
-          setActiveServerId(server.id);
-          standaloneWindow.postMessage('servers-updated', {
-            servers: loadStoredServers(),
-            activeServerId: server.id,
-          });
-        }
-      }
-    });
-
-    // Multi-server management messages
-    standaloneWindow.onMessage('get-servers', () => {
-      const servers = loadStoredServers();
-      const activeServerId = getActiveServerId();
-      standaloneWindow.postMessage('servers-list', { servers, activeServerId });
-    });
-
-    standaloneWindow.onMessage('remove-server', (data) => {
-      if (data && data.serverId) {
-        // The store notifies both webviews itself
-        removeServer(data.serverId);
-      }
-    });
-
-    standaloneWindow.onMessage('switch-server', (data) => {
-      if (data && data.serverId) {
-        switchActiveServer(data.serverId);
-      }
-    });
-
-    standaloneWindow.onMessage('open-external-url', (data) => {
-      if (data && data.url) {
-        debugLog(`Opening external URL from standalone: ${data.url}`);
-        try {
-          utils.open(data.url);
-        } catch (error) {
-          debugLog(`Failed to open external URL: ${error.message}`);
-        }
-      }
     });
 
     // Open the window
@@ -384,8 +444,20 @@ function openJellyfinStandaloneWindow(sessionData) {
 }
 
 // Menu items
-menu.addItem(menu.item('Download Jellyfin Subtitles', manualDownloadSubtitles));
-menu.addItem(menu.item('Set Jellyfin Title', manualSetTitle));
+// A retry from the menu must ask the server again, not reuse the response
+// that left the file without subtitles or a title.
+menu.addItem(
+  menu.item('Download Jellyfin Subtitles', () => {
+    forgetItemRequests();
+    manualDownloadSubtitles();
+  })
+);
+menu.addItem(
+  menu.item('Set Jellyfin Title', () => {
+    forgetItemRequests();
+    manualSetTitle();
+  })
+);
 menu.addItem(
   menu.item(
     'Show Jellyfin Browser',
@@ -604,6 +676,7 @@ event.on('mpv.pause.changed', handlePauseChange);
 // Handle file ending (includes both natural end and replacement)
 event.on('mpv.end-file', () => {
   invalidatePendingResults();
+  forgetItemRequests();
   const queuedForAutoplay = isQueued();
   const isReplacingPlayback = consumeReplacementGuard();
   debugLog(
@@ -647,88 +720,7 @@ event.on('iina.window-loaded', () => {
   sidebar.onMessage('play-media', handlePlayMedia);
   sidebar.onMessage('play-media-list', handlePlayMediaList);
 
-  // The webview cannot read preferences, so it asks for the shared Jellyfin
-  // client identity (device id + version) it must authenticate with.
-  sidebar.onMessage('get-client-identity', () => {
-    sidebar.postMessage('client-identity', getWebviewIdentity());
-  });
-
-  // Handle session requests from sidebar (backward compatible)
-  sidebar.onMessage('get-session', () => {
-    const sessionData = getStoredJellyfinSession();
-    sidebar.postMessage('session-data', sessionData);
-  });
-
-  // Handle session clear requests from sidebar
-  sidebar.onMessage('clear-session', () => {
-    clearJellyfinSession();
-  });
-
-  // Handle session storage requests from sidebar (manual login)
-  sidebar.onMessage('store-session', (data) => {
-    if (data && data.serverUrl && data.accessToken) {
-      const server = addOrUpdateServer({
-        serverUrl: data.serverUrl,
-        accessToken: data.accessToken,
-        serverName: data.serverName || '',
-        userId: data.userId || '',
-        username: data.username || '',
-      });
-      if (server) {
-        setActiveServerId(server.id);
-        // Send back updated server list
-        sidebar.postMessage('servers-updated', {
-          servers: loadStoredServers(),
-          activeServerId: server.id,
-        });
-      }
-    }
-  });
-
-  // Multi-server management messages
-  sidebar.onMessage('get-servers', () => {
-    const servers = loadStoredServers();
-    const activeServerId = getActiveServerId();
-    sidebar.postMessage('servers-list', { servers, activeServerId });
-  });
-
-  sidebar.onMessage('remove-server', (data) => {
-    if (data && data.serverId) {
-      removeServer(data.serverId);
-    }
-  });
-
-  sidebar.onMessage('switch-server', (data) => {
-    if (data && data.serverId) {
-      switchActiveServer(data.serverId);
-    }
-  });
-
-  // Handle external URL opening requests from sidebar
-  sidebar.onMessage('open-external-url', (data) => {
-    if (data && data.url) {
-      debugLog(`Opening external URL: ${data.url}`);
-      try {
-        const success = utils.open(data.url);
-        if (success) {
-          debugLog('Successfully opened URL in browser');
-          if (data.title) {
-            core.osd(`Opened ${data.title} in browser`);
-          } else {
-            core.osd('Opened Jellyfin page in browser');
-          }
-        } else {
-          throw new Error('utils.open returned false');
-        }
-      } catch (error) {
-        debugLog(`Failed to open external URL: ${error.message}`);
-        core.osd('Failed to open Jellyfin page in browser');
-        debugLog(`URL that failed to open: ${data.url}`);
-      }
-    } else {
-      debugLog('Invalid open-external-url message - missing URL');
-    }
-  });
+  registerBrowserHandlers(sidebar);
 
   // Send initial server data to sidebar after a brief delay
   setTimeout(() => {
