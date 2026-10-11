@@ -2,12 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadCommonJs } from './helpers/load-commonjs.js';
 
-function loadMediaActions(deps = {}) {
-  const context = vm.createContext({ module: { exports: {} } });
+function loadMediaActions(deps = {}, globals = {}) {
+  const context = vm.createContext({
+    module: { exports: {} },
+    setTimeout,
+    clearTimeout,
+    ...globals,
+  });
   vm.runInContext(readFileSync('src/lib/media-actions.js', 'utf8'), context);
 
-  const calls = { loadTrack: [], mpvSet: [], title: '' };
+  const calls = { loadTrack: [], mpvSet: [], title: '', titleSetLocally: false };
   const prefs = { set_video_title: true, preferred_languages: 'en' };
   const manager = context.module.exports.createMediaActionsManager({
     core: {
@@ -24,6 +30,8 @@ function loadMediaActions(deps = {}) {
         if (name === 'force-media-title') calls.title = value;
       },
       getString: (name) => (name === 'force-media-title' ? calls.title : ''),
+      getFlag: (name) =>
+        name === 'option-info/force-media-title/set-locally' ? calls.titleSetLocally : false,
     },
     parseJellyfinUrl: (url) => {
       const match = /\/Videos\/([^/]+)\//.exec(url);
@@ -194,13 +202,42 @@ test('a queued item whose per-file title matches a plugin title keeps it', () =>
   manager.setTitleForNextItem('Episode 1', E01);
   manager.updateFromFileUrl(E01);
   calls.title = 'Episode 2';
+  calls.titleSetLocally = true;
   manager.updateFromFileUrl(E02);
   assert.equal(calls.title, 'Episode 2');
 
   // When E02 ends mpv restores 'Episode 1'; a local file must still clear it
   calls.title = 'Episode 1';
+  calls.titleSetLocally = false;
   manager.updateFromFileUrl('/Users/me/Movies/home.mp4');
   assert.equal(calls.title, '');
+});
+
+test('a Jellyfin URL opened without a title does not keep the previous one', async () => {
+  const { manager, calls } = loadMediaActions({
+    fetchItemMetadata: async () => {
+      throw new Error('offline');
+    },
+  });
+
+  manager.setTitleForNextItem('Movie A', E01);
+  manager.updateFromFileUrl(E01);
+  // Movie B opened from a pasted URL; its metadata request fails
+  manager.updateFromFileUrl(E02);
+  await manager.setVideoTitleFromMetadata('https://jf', 'e02', 'K');
+
+  assert.equal(calls.title, '');
+});
+
+test('no title is forced before opening when titles are turned off', () => {
+  const { manager, calls } = loadMediaActions({
+    preferences: { get: () => false },
+  });
+
+  manager.setTitleForNextItem('Movie A', E01);
+  manager.updateFromFileUrl(E01);
+
+  assert.deepEqual(calls.mpvSet, []);
 });
 
 test('a title that arrives after its file ended is not applied to the next one', async () => {
@@ -217,4 +254,140 @@ test('a title that arrives after its file ended is not applied to the next one',
   await pending;
 
   assert.deepEqual(calls.mpvSet, []);
+});
+
+test('loadfile titles are length-quoted so commas and non-ASCII survive', () => {
+  const { mediaTitleOption } = loadCommonJs('src/lib/media-actions.js');
+
+  assert.equal(mediaTitleOption('Hello, Goodbye'), 'force-media-title=%14%Hello, Goodbye');
+  // UTF-8 bytes, not UTF-16 units: ż and ó are 2 bytes each, the emoji 4
+  assert.equal(mediaTitleOption('żó 🎬'), 'force-media-title=%9%żó 🎬');
+});
+
+test('a Jellyfin URL opened directly gets its title before mpv opens it', async () => {
+  const requests = [];
+  const { manager, calls } = loadMediaActions({
+    fetchItemMetadata: async (serverBase, itemId) => {
+      requests.push(itemId);
+      return {
+        Name: 'Pilot',
+        Type: 'Episode',
+        SeriesName: 'Show',
+        ParentIndexNumber: 1,
+        IndexNumber: 1,
+      };
+    },
+  });
+
+  await manager.applyTitleBeforeLoad(E01);
+  assert.equal(calls.title, 'Show S01E01 - Pilot');
+
+  manager.updateFromFileUrl(E01);
+  assert.equal(calls.title, 'Show S01E01 - Pilot');
+  assert.deepEqual(requests, ['e01']);
+});
+
+test('the title passed by the browser is applied before loading without a request', async () => {
+  const requests = [];
+  const { manager, calls } = loadMediaActions({
+    fetchItemMetadata: async (serverBase, itemId) => {
+      requests.push(itemId);
+      return { Name: 'Other' };
+    },
+  });
+
+  manager.setTitleForNextItem('Movie A', E01);
+  calls.title = 'Restored older title';
+  await manager.applyTitleBeforeLoad(E01);
+
+  assert.equal(calls.title, 'Movie A');
+  assert.deepEqual(requests, []);
+});
+
+test('a queued item with its own title is not held up or retitled', async () => {
+  const requests = [];
+  const { manager, calls } = loadMediaActions({
+    fetchItemMetadata: async (serverBase, itemId) => {
+      requests.push(itemId);
+      return { Name: 'Other' };
+    },
+  });
+
+  calls.title = 'Track 2';
+  calls.titleSetLocally = true;
+  await manager.applyTitleBeforeLoad(E02);
+
+  assert.equal(calls.title, 'Track 2');
+  assert.deepEqual(requests, []);
+});
+
+test('the previous title is cleared before a local file opens', async () => {
+  const { manager, calls } = loadMediaActions();
+
+  manager.setTitleForNextItem('Movie A', E01);
+  manager.updateFromFileUrl(E01);
+  await manager.applyTitleBeforeLoad('/Users/me/Movies/home.mp4');
+
+  assert.equal(calls.title, '');
+});
+
+test('a slow server does not hold the load, and its late title is not applied early', async () => {
+  const metadata = deferred();
+  const { manager, calls } = loadMediaActions(
+    { fetchItemMetadata: () => metadata.promise },
+    { setTimeout: (callback) => setImmediate(callback), clearTimeout() {} }
+  );
+
+  await manager.applyTitleBeforeLoad(E01);
+  assert.equal(calls.title, '');
+
+  metadata.resolve({ Name: 'Pilot' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.title, '');
+});
+
+test('titles turned off leave loading alone', async () => {
+  const requests = [];
+  const { manager, calls } = loadMediaActions({
+    preferences: { get: () => false },
+    fetchItemMetadata: async (serverBase, itemId) => {
+      requests.push(itemId);
+      return { Name: 'Pilot' };
+    },
+  });
+
+  await manager.applyTitleBeforeLoad(E01);
+
+  assert.deepEqual(calls.mpvSet, []);
+  assert.deepEqual(requests, []);
+});
+
+test('an unnumbered episode still gets a title before loading', async () => {
+  const { manager, calls } = loadMediaActions({
+    fetchItemMetadata: async () => ({
+      Name: 'Special',
+      Type: 'Episode',
+      SeriesName: 'Show',
+      ParentIndexNumber: 0,
+      IndexNumber: null,
+    }),
+  });
+
+  await manager.applyTitleBeforeLoad(E01);
+
+  assert.equal(calls.title, 'Show - Special');
+});
+
+test('a pre-load title does not replace one picked in the browser meanwhile', async () => {
+  const metadata = deferred();
+  const { manager, calls } = loadMediaActions({ fetchItemMetadata: () => metadata.promise });
+
+  const pending = manager.applyTitleBeforeLoad(E01);
+  manager.setTitleForNextItem('Movie X', E02);
+  metadata.resolve({ Name: 'Pasted Y' });
+  await pending;
+  assert.equal(calls.title, 'Movie X');
+
+  await manager.applyTitleBeforeLoad(E02);
+  assert.equal(calls.title, 'Movie X');
 });

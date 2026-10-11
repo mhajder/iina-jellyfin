@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { loadCommonJs } from './helpers/load-commonjs.js';
+
+const { mediaTitleOption } = loadCommonJs('src/lib/media-actions.js');
 
 function loadAutoplayManager(playlist) {
   const context = vm.createContext({ module: { exports: {} } });
@@ -86,6 +89,7 @@ test('a repeated load keeps the next episode marked as queued', async () => {
       ParentIndexNumber: 1,
       IndexNumber: 1,
     }),
+    mediaTitleOption,
     log() {},
   });
 
@@ -96,4 +100,48 @@ test('a repeated load keeps the next episode marked as queued', async () => {
   // IINA reports the same file as loaded again
   loadEpisode(manager, 'E01');
   assert.equal(manager.isQueued(), true);
+});
+
+test('the next episode is queued with its title quoted for mpv', async () => {
+  const playlist = { count: 1, pos: 0 };
+  const loadfiles = [];
+  const context = vm.createContext({ module: { exports: {} } });
+  vm.runInContext(readFileSync('src/lib/autoplay-manager.js', 'utf8'), context);
+  const manager = context.module.exports.createAutoplayManager({
+    http: {
+      get: async () => ({
+        data: {
+          Items: [
+            { Id: 'E01', Name: 'Pilot', IndexNumber: 1, MediaSources: [{}] },
+            { Id: 'E02', Name: 'Hello, Goodbye', IndexNumber: 2, MediaSources: [{}] },
+          ],
+        },
+      }),
+    },
+    mpv: {
+      getNumber: (name) => (name === 'playlist-count' ? playlist.count : playlist.pos),
+      command(name, args) {
+        if (name === 'loadfile') loadfiles.push(args);
+      },
+    },
+    core: {},
+    preferences: { get: (key) => key === 'set_video_title' },
+    buildJellyfinHeaders: () => ({}),
+    fetchItemMetadata: async () => ({
+      Type: 'Episode',
+      SeriesId: 'series',
+      SeasonId: 'season',
+      SeriesName: 'Show',
+      ParentIndexNumber: 1,
+      IndexNumber: 1,
+    }),
+    mediaTitleOption,
+    log() {},
+  });
+
+  loadEpisode(manager, 'E01');
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(loadfiles.length, 1);
+  assert.equal(loadfiles[0][3], 'force-media-title=%28%Show S01E02 - Hello, Goodbye');
 });
