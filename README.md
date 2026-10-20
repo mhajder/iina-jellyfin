@@ -1,8 +1,25 @@
+<div align="center">
+
 # IINA Jellyfin Plugin
 
-An comprehensive IINA plugin that provides Jellyfin media server integration, including automatic subtitle downloading and a full media browser sidebar.
+**Browse your Jellyfin library, play it, get subtitles and sync progress, all inside IINA on macOS**
 
-## Features
+[![Release](https://img.shields.io/github/v/release/mhajder/iina-jellyfin?logo=github)](https://github.com/mhajder/iina-jellyfin/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/mhajder/iina-jellyfin/total?logo=github)](https://github.com/mhajder/iina-jellyfin/releases)
+[![License](https://img.shields.io/github/license/mhajder/iina-jellyfin)](https://github.com/mhajder/iina-jellyfin/blob/main/LICENSE)
+[![Pre-commit Checks](https://github.com/mhajder/iina-jellyfin/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/mhajder/iina-jellyfin/actions/workflows/pre-commit.yml)
+
+[![IINA plugin](https://img.shields.io/badge/IINA-plugin-6E40C9?logo=apple&logoColor=white)](https://iina.io/)
+[![Jellyfin](https://img.shields.io/badge/Jellyfin-client-00A4DC?logo=jellyfin&logoColor=white)](https://jellyfin.org/)
+[![Stars](https://img.shields.io/github/stars/mhajder/iina-jellyfin?style=flat&logo=github)](https://github.com/mhajder/iina-jellyfin/stargazers)
+
+[Installation](https://github.com/mhajder/iina-jellyfin#-installation) · [Getting started](https://github.com/mhajder/iina-jellyfin#-getting-started) · [Configuration](https://github.com/mhajder/iina-jellyfin#-configuration) · [Contributing](https://github.com/mhajder/iina-jellyfin#-contributing)
+
+</div>
+
+A comprehensive IINA plugin that provides Jellyfin media server integration, including automatic subtitle downloading and a full media browser sidebar.
+
+## ✨ Features
 
 ### Subtitle Management
 
@@ -41,7 +58,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 - **Keyboard shortcuts**: Quick access to browser sidebar (Cmd+Shift+J)
 - **Autoplay support**: Automatically queues the next episode in a series when available, with cross-season support
 
-## Installation
+## 📦 Installation
 
 1. Open IINA
 2. Go to Preferences → Plugins
@@ -49,7 +66,7 @@ An comprehensive IINA plugin that provides Jellyfin media server integration, in
 4. Paste `mhajder/iina-jellyfin` and click Install
 5. The plugin will appear in IINA's Plugin preferences
 
-## Getting Started
+## 🎬 Getting Started
 
 ### Automatic Subtitle Downloading
 
@@ -149,7 +166,7 @@ The Movies and TV Series tabs include powerful filtering and sorting tools to he
 
 Click the "Filter/Sort" button in the Movies or TV Series tab header to toggle the filter panel and customize your view.
 
-## Supported URL Formats
+## 🔗 Supported URL Formats
 
 The plugin automatically detects and processes Jellyfin URLs in these formats:
 
@@ -159,7 +176,7 @@ The plugin automatically detects and processes Jellyfin URLs in these formats:
 
 **Note**: URLs with API keys will automatically store authentication data for the sidebar browser, eliminating the need for manual login on first use.
 
-## Configuration
+## 🔧 Configuration
 
 Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 
@@ -191,22 +208,28 @@ The plugin adds these menu items to IINA:
 - **Download Jellyfin Subtitles**: Manually download subtitles for current media
 - **Set Jellyfin Title**: Manually set video title from Jellyfin metadata
 
-## Development
+## 🔨 Development
 
-### Development Scripts
+```sh
+pnpm install
+prek install
+/Applications/IINA.app/Contents/MacOS/iina-plugin link .
+```
 
-- `pnpm run check`: Run ESLint and Prettier checks
-- `pnpm run lint`: Run ESLint
-- `pnpm run lint:fix`: Auto-fix ESLint issues
-- `pnpm run format`: Check Prettier formatting
-- `pnpm run format:fix`: Auto-fix Prettier formatting
-- `/Applications/IINA.app/Contents/MacOS/iina-plugin link .`: Link plugin to IINA for testing
-- `/Applications/IINA.app/Contents/MacOS/iina-plugin unlink .`: Unlink plugin from IINA
+| Command                | What it does                   |
+| ---------------------- | ------------------------------ |
+| `pnpm test`            | Run the tests in `tests/`      |
+| `pnpm run check`       | Run ESLint and Prettier checks |
+| `pnpm run lint:fix`    | Auto-fix ESLint issues         |
+| `pnpm run format:fix`  | Auto-fix Prettier formatting   |
+| `iina-plugin unlink .` | Unlink the plugin from IINA    |
 
-## Contributing
+## 🤝 Contributing
 
-Feel free to submit issues and pull requests to improve the plugin functionality.
+Issues and pull requests are welcome. See [CONTRIBUTING.md](https://github.com/mhajder/iina-jellyfin/blob/main/CONTRIBUTING.md) for the dev setup, checks and commit message format.
 
-## License
+Found a security problem? Please report it privately as described in [SECURITY.md](https://github.com/mhajder/iina-jellyfin/blob/main/SECURITY.md).
 
-GNU Affero General Public License - see [LICENSE](LICENSE) file for details.
+## 📜 License
+
+GNU General Public License v3.0 only - see [LICENSE](https://github.com/mhajder/iina-jellyfin/blob/main/LICENSE) for details.
