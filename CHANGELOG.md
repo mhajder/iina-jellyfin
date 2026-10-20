@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.6](https://github.com/mhajder/iina-jellyfin/compare/v0.7.5...v0.7.6) (2026-10-20)
+
+
+### 📚 Documentation
+
+* add security policy and contributing guide, refresh README ([#126](https://github.com/mhajder/iina-jellyfin/issues/126)) ([b013a78](https://github.com/mhajder/iina-jellyfin/commit/b013a78c82f28ca5d6624c55acdc1dbe97f669af))
+
+
+### 🧩 CI
+
+* release with the default GITHUB_TOKEN ([#128](https://github.com/mhajder/iina-jellyfin/issues/128)) ([2f02721](https://github.com/mhajder/iina-jellyfin/commit/2f02721b9bd52481e8e502b176a5acb7e7adcead))
+* run the checks on pnpm 12 and Node.js 26 ([#129](https://github.com/mhajder/iina-jellyfin/issues/129)) ([02a0558](https://github.com/mhajder/iina-jellyfin/commit/02a0558f3de39b4802a8d2146bb762ba3112e111))
+
 ## [0.7.5](https://github.com/mhajder/iina-jellyfin/compare/v0.7.4...v0.7.5) (2026-10-11)
 
 
