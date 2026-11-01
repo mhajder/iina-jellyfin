@@ -753,6 +753,19 @@ test('playing from the sidebar replaces the current file and titles it', () => {
   assert.equal(plugin.mpvProps.get('force-media-title'), 'Movie (2020)');
 });
 
+test('a play request without a stream URL shows Nothing to play and opens nothing', () => {
+  const plugin = loadPlugin();
+  plugin.loadSidebar();
+
+  for (const message of [undefined, null, {}, { title: 'Movie' }]) {
+    assert.doesNotThrow(() => plugin.sidebar.handlers['play-media'](message));
+  }
+
+  assert.deepEqual(plugin.opened, []);
+  assert.deepEqual(plugin.commands, []);
+  assert.deepEqual(plugin.osd, Array(4).fill('Nothing to play'));
+});
+
 test('with open in new window the sidebar asks the global entry for a new player', () => {
   const plugin = loadPlugin({ prefs: { open_in_new_window: true } });
   plugin.loadSidebar();

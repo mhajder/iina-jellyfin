@@ -735,7 +735,13 @@ function handlePlayMedia(message) {
     title: message?.title,
     streamUrl: message?.streamUrl,
   });
-  const { streamUrl, title } = message;
+  const { streamUrl, title } = message || {};
+  // Same answer as handlePlayMediaList: never hand core.open an undefined URL.
+  if (!streamUrl) {
+    debugLog('play-media without a stream URL, nothing to open');
+    core.osd('Nothing to play');
+    return;
+  }
   debugLog(`Opening media: ${title} - ${streamUrl}`);
 
   try {
