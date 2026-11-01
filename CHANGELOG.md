@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/mhajder/iina-jellyfin/compare/v0.8.0...v0.9.0) (2026-11-01)
+
+
+### 🚀 Features
+
+* add an "Always show subtitles" option ([#136](https://github.com/mhajder/iina-jellyfin/issues/136)) ([7eeb0d2](https://github.com/mhajder/iina-jellyfin/commit/7eeb0d2527173f6124c21a5d735ec63751914d07))
+
+
+### 🐛 Bug Fixes
+
+* bugs found by raising test coverage to 98% ([#138](https://github.com/mhajder/iina-jellyfin/issues/138)) ([97fdbd4](https://github.com/mhajder/iina-jellyfin/commit/97fdbd46c2483468860f593fb4b691528afcce3b))
+
+
+### 🧩 CI
+
+* pin actions to commit SHAs at latest versions ([#139](https://github.com/mhajder/iina-jellyfin/issues/139)) ([c2d2850](https://github.com/mhajder/iina-jellyfin/commit/c2d2850145962257ce03223c042243d4f08aa478))
+
 ## [0.8.0](https://github.com/mhajder/iina-jellyfin/compare/v0.7.5...v0.8.0) (2026-11-01)
 
 
