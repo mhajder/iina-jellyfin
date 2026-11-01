@@ -345,7 +345,20 @@ function createPlaybackTrackingManager({
     }
   }
 
-  async function startPlaybackTracking(serverBase, itemId, apiKey) {
+  /**
+   * Options:
+   * - mediaSourceId: the version playing, from the URL. Without it Jellyfin
+   *   plays (and so reports) its first media source.
+   * - startPosition: where a version switch reopened the item. It stands in
+   *   for the resume point, and there is no resume seek, as the file already
+   *   started there.
+   */
+  async function startPlaybackTracking(
+    serverBase,
+    itemId,
+    apiKey,
+    { mediaSourceId: requestedMediaSourceId = null, startPosition = null } = {}
+  ) {
     stopPlaybackTracking();
 
     if (!preferences.get('sync_playback_progress')) {
@@ -358,12 +371,12 @@ function createPlaybackTrackingManager({
     const requestId = ++sessionRequestCounter;
 
     let playSessionId = null;
-    let mediaSourceId = null;
+    let mediaSourceId = requestedMediaSourceId;
     try {
       const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
       if (playbackInfo) {
         playSessionId = playbackInfo.PlaySessionId || null;
-        if (playbackInfo.MediaSources && playbackInfo.MediaSources.length > 0) {
+        if (!mediaSourceId && playbackInfo.MediaSources && playbackInfo.MediaSources.length > 0) {
           mediaSourceId = playbackInfo.MediaSources[0].Id || null;
         }
         log(`PlaySessionId: ${playSessionId}, MediaSourceId: ${mediaSourceId}`);
@@ -387,13 +400,17 @@ function createPlaybackTrackingManager({
       playSessionId,
       mediaSourceId,
       startTime: Date.now(),
-      resumePosition: null,
+      resumePosition: startPosition,
       duration: null,
       hasReportedWatched: false,
     };
 
     reportPlaybackStart(serverBase, itemId, apiKey, playSessionId, mediaSourceId);
-    resumeFromJellyfin(serverBase, itemId, apiKey);
+    if (startPosition === null) {
+      resumeFromJellyfin(serverBase, itemId, apiKey);
+    } else {
+      log(`Version switch started at ${startPosition}s, not seeking to the resume point`);
+    }
 
     try {
       const duration = core.status.duration;

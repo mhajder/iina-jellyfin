@@ -107,6 +107,7 @@ function createJellyfinApi({ http, preferences, log }) {
       const itemId = pathMatch[1];
 
       let apiKey = null;
+      let mediaSourceId = null;
       if (queryString) {
         // Jellyfin binds query parameters case-insensitively, so links made by
         // other tools may spell the token differently.
@@ -115,6 +116,11 @@ function createJellyfinApi({ http, preferences, log }) {
         );
         if (apiKeyMatch) {
           apiKey = decodeURIComponent(apiKeyMatch[1]);
+        }
+        // Which version of the item plays; absent means the first one.
+        const mediaSourceMatch = queryString.match(/(?:^|&)mediasourceid=([^&]+)/i);
+        if (mediaSourceMatch) {
+          mediaSourceId = decodeURIComponent(mediaSourceMatch[1]);
         }
       }
 
@@ -131,6 +137,7 @@ function createJellyfinApi({ http, preferences, log }) {
         serverBase,
         itemId,
         apiKey,
+        mediaSourceId,
       };
     } catch (error) {
       log(`Error parsing Jellyfin URL: ${error.message}`);

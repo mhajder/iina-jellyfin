@@ -915,3 +915,28 @@ test('an untagged download gets no made-up language', async () => {
 
   assert.equal(mpv.tracks.at(-1).lang, '');
 });
+
+test('subtitles are downloaded from the version playing', async () => {
+  const downloads = [];
+  const sidecar = (Language, Index) => ({
+    Type: 'Subtitle',
+    IsTextSubtitleStream: true,
+    IsExternal: true,
+    Language,
+    Index,
+  });
+  const { manager } = loadMediaActions({
+    http: { download: async (url) => downloads.push(url) },
+    fetchPlaybackInfo: async () => ({
+      MediaSources: [
+        { Id: 'first', MediaStreams: [sidecar('en', 2)] },
+        { Id: 'second', MediaStreams: [sidecar('en', 5)] },
+      ],
+    }),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K', { mediaSourceId: 'second' });
+
+  assert.deepEqual(downloads, ['https://jf/Videos/e01/second/Subtitles/5/stream.srt?ApiKey=K']);
+});

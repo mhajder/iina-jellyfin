@@ -156,3 +156,9 @@ test('an error status from Jellyfin is a failed request, not data', async () => 
   await assert.rejects(api.fetchItemMetadata('https://jf', 'item', 'key'), /status 500/);
   await assert.rejects(api.fetchPlaybackInfo('https://jf', 'item', 'key'), /status 500/);
 });
+
+test('the version playing is read from the MediaSourceId parameter', () => {
+  const base = 'https://jf.example/Videos/item/stream?static=true&ApiKey=K';
+  assert.equal(api.parseJellyfinUrl(`${base}&mediaSourceId=abc`).mediaSourceId, 'abc');
+  assert.equal(api.parseJellyfinUrl(base).mediaSourceId, null);
+});

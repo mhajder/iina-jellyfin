@@ -57,6 +57,7 @@ A comprehensive IINA plugin that provides Jellyfin media server integration, inc
 - **On-screen notifications**: Optional OSD messages to keep you informed
 - **Keyboard shortcuts**: Quick access to browser sidebar (Cmd+Shift+J)
 - **Autoplay support**: Automatically queues the next episode in a series when available, with cross-season support
+- **Version switching**: For items with several versions in Jellyfin (e.g. 4K and 1080p files), switch between them during playback from the plugin menu, keeping your position
 
 ## 📦 Installation
 
@@ -208,6 +209,7 @@ The plugin adds these menu items to IINA:
 - **Show Jellyfin Browser** (`Cmd+Shift+J`): Open the media browser sidebar
 - **Download Jellyfin Subtitles**: Manually download subtitles for current media
 - **Set Jellyfin Title**: Manually set video title from Jellyfin metadata
+- **Jellyfin Version**: Shown when the playing item has more than one version; lists each one (name, video format and bitrate) and reopens the item in the chosen version at the current position
 
 ## 🔨 Development
 
