@@ -483,6 +483,69 @@ test('Quick Connect shows the code and signs in once the request is approved', a
   assert.ok(calls.includes('loadHomeTab'));
 });
 
+test('a Quick Connect check slower than the interval is not overlapped by the next one', async () => {
+  const pending = [];
+  const server = quickConnectServer({
+    'GET /QuickConnect/Connect?secret=s3cret': () =>
+      new Promise((resolve) => pending.push(resolve)),
+  });
+  const { intervals, requests, messages } = await startQuickConnect(server);
+
+  await intervals.tick();
+  await intervals.tick();
+  await intervals.tick();
+  assert.equal(polls(requests).length, 1, 'no new check while the first is unanswered');
+
+  // Answered as approved: without the guard every overlapping check would
+  // see this and sign in again.
+  pending.forEach((resolve) => resolve({ status: 200, data: { Authenticated: true } }));
+  await intervals.tick();
+
+  const logins = requests.filter((r) => r.url.endsWith('/Users/AuthenticateWithQuickConnect'));
+  assert.equal(logins.length, 1);
+  assert.equal(messages('store-session').length, 1);
+});
+
+test('a check left over from a restarted Quick Connect neither signs in nor stops the new poll', async () => {
+  const pending = [];
+  const server = quickConnectServer({
+    'GET /QuickConnect/Connect?secret=s3cret': () =>
+      new Promise((resolve) => pending.push(resolve)),
+  });
+  const { sidebar, dom, intervals, requests } = await startQuickConnect(server);
+
+  await intervals.tick();
+  sidebar.cancelQuickConnect();
+  dom.get('qcServerUrl').value = 'https://jf.example.com/';
+  await sidebar.startQuickConnect();
+  assert.equal(intervals.active().length, 1);
+
+  // The old code's check answers as approved after the restart.
+  pending[0]({ status: 200, data: { Authenticated: true } });
+  await flush();
+
+  const logins = requests.filter((r) => r.url.endsWith('/Users/AuthenticateWithQuickConnect'));
+  assert.equal(logins.length, 0);
+  assert.equal(intervals.active().length, 1, 'the new code is still being checked');
+  assert.equal(sidebar.currentServer, null);
+});
+
+test('Quick Connect checks again once a slow check has been answered', async () => {
+  const pending = [];
+  const server = quickConnectServer({
+    'GET /QuickConnect/Connect?secret=s3cret': () =>
+      new Promise((resolve) => pending.push(resolve)),
+  });
+  const { intervals, requests } = await startQuickConnect(server);
+
+  await intervals.tick();
+  pending[0]({ status: 200, data: { Authenticated: false } });
+  await flush();
+  await intervals.tick();
+
+  assert.equal(polls(requests).length, 2);
+});
+
 test('Quick Connect keeps polling through transient poll failures', async () => {
   let failNext = true;
   const server = quickConnectServer({
