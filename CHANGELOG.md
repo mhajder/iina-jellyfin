@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.8.0](https://github.com/mhajder/iina-jellyfin/compare/v0.7.5...v0.8.0) (2026-11-01)
+
+
+### 🚀 Features
+
+* select preferred-language tracks on play ([#131](https://github.com/mhajder/iina-jellyfin/issues/131)) ([581ebd6](https://github.com/mhajder/iina-jellyfin/commit/581ebd696810fcb45f43bda3e382850c53f297f6))
+* switch between Jellyfin media versions during playback ([#133](https://github.com/mhajder/iina-jellyfin/issues/133)) ([9bfdafc](https://github.com/mhajder/iina-jellyfin/commit/9bfdafcde89378e652432d97f7024668c65c35ed)), closes [#8](https://github.com/mhajder/iina-jellyfin/issues/8)
+
+
+### 🐛 Bug Fixes
+
+* load the viewer's other plugins in new Jellyfin windows ([#134](https://github.com/mhajder/iina-jellyfin/issues/134)) ([8b5ffbe](https://github.com/mhajder/iina-jellyfin/commit/8b5ffbe5ec21dd1d528ab0ab939d3dd13b16c8e6))
+* rank preferred-language tracks and stop forcing subtitles on ([#132](https://github.com/mhajder/iina-jellyfin/issues/132)) ([e87c01d](https://github.com/mhajder/iina-jellyfin/commit/e87c01df09a8b94da3019d4cb44e8266800d6acc))
+
+
+### 📚 Documentation
+
+* add security policy and contributing guide, refresh README ([#126](https://github.com/mhajder/iina-jellyfin/issues/126)) ([b013a78](https://github.com/mhajder/iina-jellyfin/commit/b013a78c82f28ca5d6624c55acdc1dbe97f669af))
+* refresh the help and preferences pages ([#135](https://github.com/mhajder/iina-jellyfin/issues/135)) ([0069f7d](https://github.com/mhajder/iina-jellyfin/commit/0069f7d1b66e973d3c234215214336d3f7c32647))
+
+
+### 🧩 CI
+
+* release with the default GITHUB_TOKEN ([#128](https://github.com/mhajder/iina-jellyfin/issues/128)) ([2f02721](https://github.com/mhajder/iina-jellyfin/commit/2f02721b9bd52481e8e502b176a5acb7e7adcead))
+* run the checks on pnpm 12 and Node.js 26 ([#129](https://github.com/mhajder/iina-jellyfin/issues/129)) ([02a0558](https://github.com/mhajder/iina-jellyfin/commit/02a0558f3de39b4802a8d2146bb762ba3112e111))
+
 ## [0.7.5](https://github.com/mhajder/iina-jellyfin/compare/v0.7.4...v0.7.5) (2026-10-11)
 
 
