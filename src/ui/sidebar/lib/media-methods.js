@@ -708,7 +708,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
       document.querySelectorAll('.media-item').forEach((el) => el.classList.remove('selected'));
       // The item is not always on screen (e.g. selected from search results)
-      const selectedEl = document.querySelector(`[data-item-id="${item.Id}"]`);
+      // Escaped so an id with a quote or backslash cannot break the selector.
+      const quotedId = String(item.Id).replace(/["\\]/g, '\\$&');
+      const selectedEl = document.querySelector(`[data-item-id="${quotedId}"]`);
       if (selectedEl) {
         selectedEl.classList.add('selected');
       }
@@ -972,7 +974,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         debugLog('Item details:', item);
         debugLog('Server details:', this.currentServer);
 
-        const jellyfinUrl = `${this.currentServer.url}/web/index.html#!/details?id=${item.Id}`;
+        const jellyfinUrl = `${this.currentServer.url}/web/index.html#!/details?id=${encodeURIComponent(item.Id)}`;
 
         debugLog(`Constructed Jellyfin URL: ${jellyfinUrl}`);
         debugLog('Using IINA postMessage API to open URL in default browser');

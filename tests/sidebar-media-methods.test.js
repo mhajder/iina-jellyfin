@@ -854,6 +854,23 @@ test('media without an id or a server is not played', async () => {
   assert.equal(client.buildStreamUrl(null), null);
 });
 
+test('an item id is URL-encoded in its Jellyfin link and escaped in the selection lookup', () => {
+  const { client, document, posted } = createClient();
+  const selectors = [];
+  const querySelector = document.querySelector;
+  document.querySelector = (selector) => {
+    selectors.push(selector);
+    return querySelector(selector);
+  };
+  const item = { Id: 'a"b\\c&d', Type: 'Movie', Name: 'Odd' };
+
+  client.openInJellyfin(item);
+  client.selectMediaItem(item);
+
+  assert.equal(posted[0].data.url, `${SERVER}/web/index.html#!/details?id=a%22b%5Cc%26d`);
+  assert.ok(selectors.includes('[data-item-id="a\\"b\\\\c&d"]'), selectors.join(' | '));
+});
+
 test('opening in Jellyfin needs a server and an item', () => {
   const { client, posted } = createClient();
 
