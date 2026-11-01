@@ -401,6 +401,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     async search(term) {
+      // Take the ticket before any early return: clearing the box or the type
+      // chips must also invalidate a search still in flight, or its slow reply
+      // would replace the prompt shown below.
+      const requestId = this.nextRequestId('search');
+
       if (!this.currentServer || !this.currentUser || !term.trim()) {
         document.getElementById('searchResults').innerHTML =
           '<div class="empty-state">Enter a search term above</div>';
@@ -417,7 +422,6 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
 
       searchResults.innerHTML = '<div class="loading">Searching...</div>';
-      const requestId = this.nextRequestId('search');
 
       try {
         const params = new URLSearchParams({

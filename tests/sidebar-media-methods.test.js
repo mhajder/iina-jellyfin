@@ -666,6 +666,35 @@ test('typing quickly searches only for the last term', async () => {
   );
 });
 
+test('clearing the search box drops the reply of a search still in flight', async () => {
+  const { client, document, http } = createClient();
+  addSearchChip(document, 'Movie', true);
+  const results = document.getElementById('searchResults');
+
+  const pending = client.search('alien');
+  await client.search('');
+  http.requests[0].resolve({ SearchHints: [{ ItemId: 'h1', Type: 'Movie', Name: 'Alien' }] });
+  await pending;
+
+  assert.match(results.innerHTML, /Enter a search term above/);
+  assert.equal(results.children.length, 0);
+});
+
+test('deselecting every media type drops the reply of a search still in flight', async () => {
+  const { client, document, http } = createClient();
+  addSearchChip(document, 'Movie', true);
+  const results = document.getElementById('searchResults');
+
+  const pending = client.search('alien');
+  document.querySelector('.search-type-chip').classList.remove('active');
+  await client.search('alien');
+  http.requests[0].resolve({ SearchHints: [{ ItemId: 'h1', Type: 'Movie', Name: 'Alien' }] });
+  await pending;
+
+  assert.match(results.innerHTML, /Select at least one media type to search/);
+  assert.equal(results.children.length, 0);
+});
+
 test('choosing a search result loads the full item before playing it', async () => {
   const { client, http, posted } = createClient();
   http.reply = byPath({ '/Items/h1': { Id: 'h1', Type: 'Movie', Name: 'Alien' } });
