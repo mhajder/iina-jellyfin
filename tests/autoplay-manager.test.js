@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadCommonJs } from './helpers/load-commonjs.js';
+import { loadCommonJs, runScript } from './helpers/load-commonjs.js';
 
 const { mediaTitleOption } = loadCommonJs('src/lib/media-actions.js');
 
 function loadAutoplayManager(playlist) {
   const context = vm.createContext({ module: { exports: {} } });
-  vm.runInContext(readFileSync('src/lib/autoplay-manager.js', 'utf8'), context);
+  runScript('src/lib/autoplay-manager.js', context);
   const metadataRequests = [];
   const manager = context.module.exports.createAutoplayManager({
     http: {},
@@ -58,7 +57,7 @@ test('reopening an episode after the playlist was cleared queues the next one ag
 test('a repeated load keeps the next episode marked as queued', async () => {
   const playlist = { count: 1, pos: 0 };
   const context = vm.createContext({ module: { exports: {} } });
-  vm.runInContext(readFileSync('src/lib/autoplay-manager.js', 'utf8'), context);
+  runScript('src/lib/autoplay-manager.js', context);
   const manager = context.module.exports.createAutoplayManager({
     http: {
       get: async () => ({
@@ -106,7 +105,7 @@ test('the next episode is queued with its title quoted for mpv', async () => {
   const playlist = { count: 1, pos: 0 };
   const loadfiles = [];
   const context = vm.createContext({ module: { exports: {} } });
-  vm.runInContext(readFileSync('src/lib/autoplay-manager.js', 'utf8'), context);
+  runScript('src/lib/autoplay-manager.js', context);
   const manager = context.module.exports.createAutoplayManager({
     http: {
       get: async () => ({

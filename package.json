@@ -15,6 +15,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' tests/*.test.js",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "lint": "eslint src/",

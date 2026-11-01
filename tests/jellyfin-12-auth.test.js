@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { runScript } from './helpers/load-commonjs.js';
 
 function loadSidebarMethods(file, factoryName, globals = {}) {
   const context = vm.createContext({ window: {}, ...globals });
-  vm.runInContext(readFileSync(file, 'utf8'), context);
+  runScript(file, context);
   return context.window[factoryName](() => {});
 }
 
