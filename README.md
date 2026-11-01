@@ -76,7 +76,7 @@ The plugin automatically detects and downloads subtitles when you open Jellyfin 
 1. Copy a Jellyfin media URL (e.g., from a Jellyfin download link containing `/Items/` and `ApiKey=`)
 2. Open the URL in IINA using File → Open URL
 3. Subtitles will be downloaded automatically based on your language preferences
-4. Manually download subtitles anytime using: Menu → "Download Jellyfin Subtitles" (or `Cmd+Shift+D`)
+4. Manually download subtitles anytime using: Plugin → "Download Jellyfin Subtitles"
 
 ### Using the Jellyfin Browser Sidebar
 
@@ -179,28 +179,34 @@ The plugin automatically detects and processes Jellyfin URLs in these formats:
 
 ## 🔧 Configuration
 
-Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
+Access plugin settings through IINA → Settings → Plugins → Jellyfin. They are grouped the same way there:
 
-### Authentication Settings
+### Playback
 
-- **Enable automatic login from Jellyfin URLs**: Automatically extract server URL and API key from Jellyfin URLs for seamless login. Server credentials are stored permanently in your plugin preferences until manually removed via the sidebar server management panel.
+- **Open media in a new IINA window**: Play what you pick in the Jellyfin browser in a separate window, so you can keep browsing.
+- **Show the Jellyfin title**: Show the movie or episode title from Jellyfin instead of the file name from the stream URL
+- **Autoplay the next episode**: Queue the next episode while one plays, continuing into the next season
 
-### Media Playback Settings
+### Languages & Subtitles
 
-- **Enable automatic subtitle download**: Toggle automatic downloading when opening Jellyfin URLs
-- **Synchronize playback progress**: Enable bi-directional progress sync with Jellyfin server
-  - Automatically resumes from last watched position when opening a video
-  - Reports current playback position to Jellyfin every 10 seconds
-  - Automatically marks items as watched at 95% completion
-  - Resume positions sync across all your devices
-- **Report to my connected account (ignore link's API key)**: When enabled, playback progress, resume, and watched status are reported to the Jellyfin account you're logged into via the browser sidebar, instead of the account whose `api_key` is embedded in the playing URL. Useful when several people open the same shared link (e.g. via Syncplay) — each viewer's progress records into their own account. Requires a logged-in server; falls back to the URL's `api_key` if none is connected.
-- **Show on-screen notifications**: Display OSD messages when subtitles are downloaded
-- **Preferred Languages**: Comma-separated language codes (e.g., `en,eng,pol,pl`)
-- **Select preferred-language tracks on play**: When playback starts, switch to the audio track in the highest-ranked preferred language (skipping commentaries). Full subtitles are turned on only when the audio is not in a language you rank higher, otherwise just a signs/songs track in the audio's language, and downloaded subtitles are ranked the same way. Preferred audio/subtitle languages set in IINA's own settings take precedence. Jellyfin direct-play hands mpv the original file, so without this mpv keeps the container's default tracks — usually the original language.
-- **Download all available subtitles**: Download all subtitle tracks, ignoring language preferences
-- **Set video title from Jellyfin metadata**: Replace filenames with proper movie/show titles
-- **Open media in new IINA window**: Play media from browser in separate windows
-- **Enable autoplay**: Automatically queue the next episode when the current episode finishes, supporting cross-season playback
+- **Preferred languages**: Comma-separated language codes, most preferred first (e.g. `pol,eng`). 2- and 3-letter codes both work. Used for subtitle downloads and track selection.
+- **Pick audio and subtitles in my languages**: When playback starts, switch to the audio in your most preferred language (never a commentary or audio description). Full subtitles are turned on only when the audio is not in a language you rank higher, otherwise just a signs/songs track in the audio's language, and downloaded subtitles are ranked the same way. Preferred audio/subtitle languages set in IINA's own settings take precedence. Jellyfin direct-play hands mpv the original file, so without this mpv keeps the container's default tracks — usually the original language.
+- **Download subtitles automatically**: Download the item's external subtitle files in your preferred languages when Jellyfin media opens
+- **Download subtitles in every language**: Ignore the preferred languages when downloading external subtitles
+
+### Progress & Account
+
+- **Sync playback progress with Jellyfin**:
+  - Resumes from the last watched position when opening a video
+  - Reports the current position to Jellyfin every 10 seconds
+  - Marks items as watched at 95% completion
+- **Report to my signed-in account, not the link's**: Record progress, resume and watched status in the Jellyfin account you signed into in the browser, instead of the account whose `api_key` is in the playing URL. Useful when several people open the same shared link (e.g. via Syncplay) — each viewer's progress records into their own account. Falls back to the URL's `api_key` when you are not signed in to that server.
+- **Sign in from Jellyfin links**: When you open a Jellyfin link that contains an API key, save that server so the browser signs in automatically. Saved servers stay until you remove them in the browser.
+
+### Notifications & Troubleshooting
+
+- **Show subtitle notifications**: Show an on-screen message when subtitles are downloaded, when none match, or when the download fails
+- **Debug logging**: Write detailed logs to IINA's log for troubleshooting and bug reports; API keys and tokens are removed
 
 ### Menu Options
 

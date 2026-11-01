@@ -3,214 +3,262 @@
   <head>
     <meta charset="UTF-8" />
     <title>Jellyfin Plugin Preferences</title>
+    <!--
+      IINA binds every element with data-pref-key to the preference of that
+      name (data-type="bool" for checkboxes) and saves changes on its own, so
+      this page needs no script. Keys must match preferenceDefaults in Info.json.
+    -->
     <style>
+      :root {
+        color-scheme: light dark;
+        --text: #1d1d1f;
+        --muted: rgba(0, 0, 0, 0.55);
+        --rule: rgba(0, 0, 0, 0.1);
+        --code-bg: rgba(0, 0, 0, 0.06);
+        --field-bg: #fff;
+        --field-border: rgba(0, 0, 0, 0.2);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #f5f5f7;
+          --muted: rgba(255, 255, 255, 0.55);
+          --rule: rgba(255, 255, 255, 0.12);
+          --code-bg: rgba(255, 255, 255, 0.1);
+          --field-bg: rgba(255, 255, 255, 0.06);
+          --field-border: rgba(255, 255, 255, 0.2);
+        }
+      }
+
       * {
         box-sizing: border-box;
       }
 
-      html {
-        margin: 0;
-        padding: 0;
-      }
-
       body {
-        padding: 16px;
         margin: 0;
+        padding: 16px 20px 24px;
+        font:
+          13px/1.4 -apple-system,
+          BlinkMacSystemFont,
+          'Helvetica Neue',
+          sans-serif;
+        color: var(--text);
+      }
+
+      h2 {
+        margin: 24px 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--rule);
         font-size: 13px;
-        font-family:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
-          'Open Sans', 'Helvetica Neue', sans-serif;
+        font-weight: 600;
       }
 
-      p {
-        margin: 0;
-      }
-
-      small,
-      .small {
-        font-size: 11px;
-      }
-
-      .secondary {
-        color: rgba(0, 0, 0, 0.5);
-      }
-
-      .pref-section {
-        margin-bottom: 12px;
-      }
-
-      .pref-help {
-        margin-top: 2px;
-      }
-
-      .section-header {
-        font-weight: bold;
-        font-size: 14px;
-        margin: 20px 0 10px 0;
-        padding-bottom: 5px;
-        border-bottom: 1px solid #e0e0e0;
-      }
-
-      .section-header:first-child {
+      h2:first-child {
         margin-top: 0;
+      }
+
+      .pref {
+        margin-bottom: 14px;
+      }
+
+      /* Checkbox rows: the help text lines up with the label, not the box. */
+      .pref.check label {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+      }
+
+      .pref.check .help {
+        padding-left: 20px;
+      }
+
+      .pref.field label {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .pref.depends {
+        margin-left: 20px;
+      }
+
+      .help {
+        margin: 3px 0 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .help + .help {
+        margin-top: 4px;
+      }
+
+      input[type='text'] {
+        width: 100%;
+        padding: 4px 6px;
+        border: 1px solid var(--field-border);
+        border-radius: 5px;
+        background: var(--field-bg);
+        color: inherit;
+        font: inherit;
+      }
+
+      code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: var(--code-bg);
+        font:
+          11px 'SF Mono',
+          Menlo,
+          monospace;
       }
     </style>
   </head>
 
   <body>
-    <div class="section-header">Authentication & Session</div>
+    <h2>Playback</h2>
 
-    <div class="pref-section">
-      <label>
-        <input type="checkbox" data-type="bool" data-pref-key="auto_login_enabled" />
-        Enable automatic login from Jellyfin URLs
-      </label>
-      <p class="small secondary pref-help">
-        Automatically extract server URL and API key from Jellyfin URLs (like download links) and
-        use them to auto-login to the sidebar browser. Server credentials are stored permanently
-        until manually removed via the server management panel.
-      </p>
-    </div>
-
-    <div class="section-header">Media Playback</div>
-
-    <div class="pref-section">
-      <label>
-        <input type="checkbox" data-type="bool" data-pref-key="auto_download_enabled" />
-        Enable automatic subtitle download
-      </label>
-      <p class="small secondary pref-help">
-        Automatically download external subtitle files when opening Jellyfin media URLs in IINA.
-        Subtitles embedded in the media file are not downloaded — IINA reads those directly from the
-        file.
-      </p>
-    </div>
-
-    <div class="pref-section">
-      <label>
-        <input type="checkbox" data-type="bool" data-pref-key="set_video_title" />
-        Set video title from Jellyfin metadata
-      </label>
-      <p class="small secondary pref-help">
-        Replace the default filename with the actual movie/show title from Jellyfin. Shows proper
-        titles instead of generic "Download?ApiKey=..." names.
-      </p>
-    </div>
-
-    <div class="pref-section">
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="open_in_new_window" />
-        Open media in new IINA window
+        Open media in a new IINA window
       </label>
-      <p class="small secondary pref-help">
-        When playing media from Jellyfin browser, open it in a new IINA window instead of the
-        current one. This allows you to keep browsing while watching.
+      <p class="help">
+        Play what you pick in the Jellyfin browser in a separate window, so you can keep browsing.
+        Turn off to play in the current window.
       </p>
     </div>
 
-    <div class="pref-section">
+    <div class="pref check">
       <label>
-        <input type="checkbox" data-type="bool" data-pref-key="sync_playback_progress" />
-        Sync playback progress to Jellyfin
+        <input type="checkbox" data-type="bool" data-pref-key="set_video_title" />
+        Show the Jellyfin title
       </label>
-      <p class="small secondary pref-help">
-        Report your playback progress to Jellyfin while watching. Videos will be automatically
-        marked as "watched" when you complete 95% of the content. This keeps your Jellyfin library
-        in sync with what you've watched in IINA.
+      <p class="help">
+        Show the movie or episode title from Jellyfin instead of the file name from the stream URL.
       </p>
     </div>
 
-    <div class="pref-section">
-      <label>
-        <input type="checkbox" data-type="bool" data-pref-key="use_connected_account" />
-        Report to my connected account (ignore link's API key)
-      </label>
-      <p class="small secondary pref-help">
-        When on, progress, resume and watched status are reported to the Jellyfin account you logged
-        into via the Jellyfin browser sidebar — instead of the account whose api_key is in the
-        playing URL. Ideal for Syncplay watch-togethers: everyone opens the same shared link, but
-        each viewer's progress records into their own account. Requires being logged in via the
-        sidebar; falls back to the URL's api_key if no account is connected.
-      </p>
-    </div>
-
-    <div class="section-header">TV Series Playback</div>
-
-    <div class="pref-section">
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="autoplay_next_episode" />
-        Autoplay next episode
+        Autoplay the next episode
       </label>
-      <p class="small secondary pref-help">
-        When a TV episode ends, automatically play the next episode of the series if available. The
-        player will create a playlist of all available episodes and play them sequentially.
+      <p class="help">
+        While an episode plays, queue the next one in the series, continuing into the next season,
+        so it starts when the current one ends.
       </p>
     </div>
 
-    <div class="section-header">Subtitle Settings</div>
+    <h2>Languages &amp; Subtitles</h2>
 
-    <div class="pref-section">
-      <label>
-        Preferred languages:
-        <input
-          type="text"
-          data-pref-key="preferred_languages"
-          style="width: 100%; margin-top: 2px"
-        />
-      </label>
-      <p class="small secondary pref-help">
-        Comma-separated list of language codes to download (e.g.,
-        <code>en,eng,pol,pl</code>). Use ISO 639-1 (2-letter) or ISO 639-2 (3-letter) language
-        codes.
+    <div class="pref field">
+      <label for="preferred-languages">Preferred languages</label>
+      <input
+        id="preferred-languages"
+        type="text"
+        placeholder="en,eng"
+        data-pref-key="preferred_languages"
+      />
+      <p class="help">
+        Comma-separated, most preferred first, e.g. <code>pol,eng</code>. 2- and 3-letter codes both
+        work (<code>en</code> and <code>eng</code> mean the same language). Used for the subtitle
+        downloads and the track selection below.
       </p>
     </div>
 
-    <div class="pref-section">
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="select_preferred_tracks" />
-        Select preferred-language tracks on play
+        Pick audio and subtitles in my languages
       </label>
-      <p class="small secondary pref-help">
-        When playback starts, switch to the audio track in the highest-ranked preferred language
-        above (skipping commentaries). Full subtitles are only turned on when the audio is not in a
+      <p class="help">
+        When playback starts, switch to the audio in your most preferred language, never a
+        commentary or audio description. Subtitles are turned on only when the audio is not in a
         language you rank higher; otherwise only a signs/songs track in the audio's language is
-        used. Preferred languages set in IINA's own Audio/Subtitles settings take precedence.
+        used, if there is one.
+      </p>
+      <p class="help">
+        A preferred audio or subtitle language set in IINA's own settings takes precedence.
       </p>
     </div>
 
-    <div class="pref-section">
+    <div class="pref check">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="auto_download_enabled" />
+        Download subtitles automatically
+      </label>
+      <p class="help">
+        When Jellyfin media opens, download its external subtitle files in your preferred languages.
+        Subtitles inside the video file need no download; IINA reads them directly.
+      </p>
+    </div>
+
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="download_all_subtitles" />
-        Download all available subtitles
+        Download subtitles in every language
       </label>
-      <p class="small secondary pref-help">
-        Download every external subtitle track regardless of language preferences. When enabled, the
-        preferred languages setting is ignored.
+      <p class="help">Ignore the preferred languages when downloading external subtitles.</p>
+    </div>
+
+    <h2>Progress &amp; Account</h2>
+
+    <div class="pref check">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="sync_playback_progress" />
+        Sync playback progress with Jellyfin
+      </label>
+      <p class="help">
+        Resume where you left off, report your position to Jellyfin every 10 seconds, and mark items
+        watched at 95%.
       </p>
     </div>
 
-    <div class="section-header">Notifications & UI</div>
+    <div class="pref check depends">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="use_connected_account" />
+        Report to my signed-in account, not the link's
+      </label>
+      <p class="help">
+        Record progress and watched status in the account you signed into in the Jellyfin browser,
+        instead of the account whose API key is in the playing link. Useful with Syncplay: everyone
+        opens the same link, and each viewer's progress goes to their own account. Falls back to the
+        link's key when you are not signed in to that server.
+      </p>
+    </div>
 
-    <div class="pref-section">
+    <div class="pref check">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="auto_login_enabled" />
+        Sign in from Jellyfin links
+      </label>
+      <p class="help">
+        When you open a Jellyfin link that contains an API key (such as a download link), save that
+        server so the Jellyfin browser signs in automatically. Saved servers stay until you remove
+        them in the browser.
+      </p>
+    </div>
+
+    <h2>Notifications &amp; Troubleshooting</h2>
+
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="show_notifications" />
-        Show on-screen notifications
+        Show subtitle notifications
       </label>
-      <p class="small secondary pref-help">
-        Display OSD messages when subtitles are downloaded or when errors occur.
+      <p class="help">
+        Show an on-screen message when subtitles are downloaded, when none match, or when the
+        download fails.
       </p>
     </div>
 
-    <div class="section-header">Developer & Debug</div>
-
-    <div class="pref-section">
+    <div class="pref check">
       <label>
         <input type="checkbox" data-type="bool" data-pref-key="debug_logging" />
-        Enable debug logging
+        Debug logging
       </label>
-      <p class="small secondary pref-help">
-        Show detailed debug information in the console for troubleshooting. This will log parsing
-        details, API responses, and other internal operations.
+      <p class="help">
+        Write detailed logs (requests, URL parsing, track choices) to IINA's log for troubleshooting
+        and bug reports. API keys and tokens are removed from the logs.
       </p>
     </div>
   </body>
