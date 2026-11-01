@@ -171,9 +171,10 @@
         Select preferred-language tracks on play
       </label>
       <p class="small secondary pref-help">
-        When playback starts, automatically switch the audio and subtitle tracks to the first ones
-        matching the preferred languages above (skipping commentary audio and forced/signs-only
-        subtitles), instead of the file's own default tracks.
+        When playback starts, switch to the audio track in the highest-ranked preferred language
+        above (skipping commentaries). Full subtitles are only turned on when the audio is not in a
+        language you rank higher; otherwise only a signs/songs track in the audio's language is
+        used. Preferred languages set in IINA's own Audio/Subtitles settings take precedence.
       </p>
     </div>
 

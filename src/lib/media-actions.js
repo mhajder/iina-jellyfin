@@ -113,6 +113,84 @@ function languagesMatch(preferred, language) {
 }
 
 /**
+ * The preferred_languages preference as a list of codes, highest priority
+ * first. Shared by the subtitle downloads and the track selection so both
+ * agree on what the viewer prefers.
+ */
+function parsePreferredLanguages(value) {
+  return String(value || 'en,eng')
+    .split(',')
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0);
+}
+
+/** False for a missing or "und" (undetermined) track language. */
+function isKnownLanguage(language) {
+  return Boolean(language) && primaryLanguageCode(language) !== 'und';
+}
+
+/**
+ * Position of the first preferred code naming this language, or Infinity
+ * when none does or the language is unknown.
+ */
+function preferenceRank(preferred, language) {
+  if (!isKnownLanguage(language)) return Infinity;
+  const index = preferred.findIndex((code) => languagesMatch(code, language));
+  return index === -1 ? Infinity : index;
+}
+
+/**
+ * Whether mpv plays this track as the main one. A secondary subtitle
+ * (secondary-sid) is "selected" too, with main-selection 1.
+ */
+function isMainSelection(track) {
+  return Boolean(track.selected) && track['main-selection'] !== 1;
+}
+
+/**
+ * The track whose language ranks highest. On a tie the track playing now
+ * wins, so mpv's pick among same-language tracks (e.g. the default 7.1 mix
+ * over a 2.0 one) is kept; otherwise the file order decides.
+ */
+function bestRankedTrack(tracks, preferred) {
+  let best = null;
+  let bestRank = Infinity;
+  for (const track of tracks) {
+    const rank = preferenceRank(preferred, track.lang);
+    const winsTie = rank === bestRank && rank !== Infinity && isMainSelection(track);
+    if (rank < bestRank || winsTie) {
+      best = track;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
+function isCommentaryTrack(track) {
+  return /commentar/i.test(track.title || '');
+}
+
+function isAudioDescription(track) {
+  const title = track.title || '';
+  return (
+    Boolean(track['visual-impaired']) ||
+    /audio description|descriptive/i.test(title) ||
+    /\bAD\b/.test(title)
+  );
+}
+
+/**
+ * Whether a subtitle covers only signs/songs/foreign dialogue. "Signs" or
+ * "Songs" on their own mean just that, but "Full + Signs" or "Dialogue &
+ * Songs" is a full subtitle.
+ */
+function isForcedSubtitle(track) {
+  const title = String(track.title || '').toLowerCase();
+  if (track.forced || /\bforced\b/.test(title)) return true;
+  return /\b(signs|songs)\b/.test(title) && !/\b(full|dialog(ue)?)\b/.test(title);
+}
+
+/**
  * A force-media-title entry for loadfile's per-file option list. mpv splits
  * that list on commas, so the value goes in its %bytes% quoted form: a title
  * such as "Hello, Goodbye" would otherwise make the whole loadfile fail.
@@ -348,13 +426,14 @@ function createMediaActionsManager({
     serverBase,
     itemId,
     mediaSourceId,
-    streamIndex,
-    subtitlePath,
+    stream,
     apiKey,
-    language,
-    codec,
     generation
   ) {
+    const streamIndex = stream.Index;
+    const subtitlePath = stream.Path;
+    const language = stream.Language || 'unknown';
+    const codec = stream.Codec || 'srt';
     try {
       const extension = subtitleExtensionForCodec(codec);
 
@@ -393,7 +472,7 @@ function createMediaActionsManager({
       }
 
       const resolvedPath = utils.resolvePath(localPath);
-      core.subtitle.loadTrack(resolvedPath);
+      addSubtitleTrack(resolvedPath, stream);
 
       log(`External subtitle loaded successfully: ${resolvedPath}`);
 
@@ -401,14 +480,97 @@ function createMediaActionsManager({
         core.osd(`Loaded external ${language} subtitle`);
       }
 
-      return true;
+      return resolvedPath;
     } catch (error) {
       log(`Error downloading external subtitle: ${error.message}`);
-      return false;
+      return null;
     }
   }
 
-  async function downloadAllSubtitles(serverBase, itemId, apiKey) {
+  /**
+   * Title for a downloaded subtitle track. Jellyfin's IsForced has no mpv flag
+   * to land in, so it goes into the title, where isForcedSubtitle finds it.
+   */
+  function subtitleTrackTitle(stream) {
+    const title = stream.Title || stream.DisplayTitle || stream.Language || '';
+    return stream.IsForced && !/forced/i.test(title) ? `${title} (Forced)`.trim() : title;
+  }
+
+  /**
+   * Add a downloaded subtitle without selecting it. mpv sub-add (and so
+   * core.subtitle.loadTrack) selects by default, which would let whichever
+   * download finished last win; selectAfterDownloads picks once all are in.
+   *
+   * A track already loaded from this path is removed and added again, as the
+   * file was just rewritten. sub-reload is not used: it selects the track and
+   * drops the title and language given here. If the old track was playing,
+   * the new one takes its place.
+   */
+  function addSubtitleTrack(path, stream) {
+    const existing = findTrackByPath(readTracks(), path);
+    if (existing) mpv.command('sub-remove', [String(existing.id)]);
+
+    // The language is passed on: mpv only guesses one from a "name.en.srt"
+    // file name, which this one is not when Jellyfin omits the Path.
+    mpv.command('sub-add', [path, 'auto', subtitleTrackTitle(stream), stream.Language || '']);
+
+    if (!existing || !isMainSelection(existing)) return;
+    const added = findTrackByPath(readTracks(), path);
+    if (!added) return;
+    mpv.set('sid', String(added.id));
+    if (autoSubtitle.id === existing.id) autoSubtitle = { ...autoSubtitle, id: added.id };
+  }
+
+  function findTrackByPath(tracks, path) {
+    return (
+      tracks.find((track) => track.type === 'sub' && track['external-filename'] === path) || null
+    );
+  }
+
+  /**
+   * Choose the subtitle once every download is in. When the plugin manages
+   * subtitles they are ranked, unless the viewer changed the subtitle since the
+   * automatic selection.
+   *
+   * A manual download always shows one of the downloads, as the viewer asked
+   * for them: the best-ranked full one, then the best-ranked forced one, when
+   * the plugin manages subtitles. Otherwise, or if none is in a preferred
+   * language, the newest download, as loadTrack used to.
+   */
+  function selectAfterDownloads(generation, paths, manual) {
+    if (isStale(generation)) return;
+    const tracks = readTracks();
+    const current = selectedTrack(tracks, 'sub');
+    const currentId = current ? current.id : null;
+
+    if (!manual && managesSubtitles()) {
+      if (autoSubtitle.generation === generation && currentId !== autoSubtitle.id) {
+        log('Subtitle changed since the automatic selection, keeping it');
+        return;
+      }
+      const preferred = parsePreferredLanguages(preferences.get('preferred_languages'));
+      const id = applySubtitle(tracks, preferred, selectedTrack(tracks, 'audio'));
+      log(`Subtitle selection after downloads: sid=${id}`);
+      return;
+    }
+
+    const downloaded = paths.map((path) => findTrackByPath(tracks, path)).filter(Boolean);
+    let choice = downloaded[downloaded.length - 1] || null;
+    if (managesSubtitles()) {
+      const preferred = parsePreferredLanguages(preferences.get('preferred_languages'));
+      const usable = downloaded.filter((track) => !isCommentaryTrack(track));
+      choice =
+        bestRankedTrack(
+          usable.filter((track) => !isForcedSubtitle(track)),
+          preferred
+        ) ||
+        bestRankedTrack(usable.filter(isForcedSubtitle), preferred) ||
+        choice;
+    }
+    if (choice && choice.id !== currentId) mpv.set('sid', String(choice.id));
+  }
+
+  async function downloadAllSubtitles(serverBase, itemId, apiKey, { manual = false } = {}) {
     const generation = fileGeneration;
     try {
       const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
@@ -438,12 +600,10 @@ function createMediaActionsManager({
 
       log(`Found ${subtitleStreams.length} external subtitle stream(s)`);
 
-      const preferredLanguages = (preferences.get('preferred_languages') || 'en,eng')
-        .split(',')
-        .filter((lang) => lang.trim().length > 0);
+      const preferredLanguages = parsePreferredLanguages(preferences.get('preferred_languages'));
       const shouldDownloadAll = preferences.get('download_all_subtitles');
 
-      let downloadedCount = 0;
+      const loadedPaths = [];
 
       for (const stream of subtitleStreams) {
         if (isStale(generation)) {
@@ -466,23 +626,25 @@ function createMediaActionsManager({
         log(`Processing external subtitle: ${language} (${codec}) - Index: ${stream.Index}`);
 
         try {
-          const downloaded = await downloadExternalSubtitle(
+          const loadedPath = await downloadExternalSubtitle(
             serverBase,
             itemId,
             mediaSource.Id,
-            stream.Index,
-            stream.Path,
+            stream,
             apiKey,
-            language,
-            codec,
             generation
           );
-          if (downloaded) {
-            downloadedCount++;
+          if (loadedPath) {
+            loadedPaths.push(loadedPath);
           }
         } catch (error) {
           log(`Failed to download subtitle ${language}: ${error.message}`);
         }
+      }
+
+      const downloadedCount = loadedPaths.length;
+      if (downloadedCount > 0) {
+        selectAfterDownloads(generation, loadedPaths, manual);
       }
 
       if (downloadedCount > 0 && preferences.get('show_notifications')) {
@@ -564,7 +726,9 @@ function createMediaActionsManager({
 
     log(`Downloading subtitles for item: ${jellyfinInfo.itemId}`);
     core.osd('Downloading subtitles...');
-    downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
+    downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey, {
+      manual: true,
+    });
   }
 
   function manualSetTitle() {
@@ -636,49 +800,126 @@ function createMediaActionsManager({
     return lastItemId;
   }
 
+  // The subtitle selectPreferredTracks left selected for the current file.
+  // selectAfterDownloads only ranks again while it is still the selected one,
+  // so a track the viewer picked in the meantime is kept.
+  let autoSubtitle = { generation: -1, id: null };
+
+  /** mpv's track list, read fresh in one call (IINA's copy can lag behind). */
+  function readTracks() {
+    const tracks = mpv.getNative('track-list');
+    return Array.isArray(tracks) ? tracks : [];
+  }
+
+  function selectedTrack(tracks, type) {
+    return tracks.find((track) => track.type === type && isMainSelection(track)) || null;
+  }
+
+  /**
+   * Whether this plugin picks the subtitle. A preferred subtitle language set
+   * in IINA (mpv's slang) is the viewer's own choice and mpv has already
+   * applied it, so the plugin then stays out of subtitle selection entirely.
+   */
+  function managesSubtitles() {
+    return Boolean(preferences.get('select_preferred_tracks')) && !mpv.getString('slang');
+  }
+
+  /**
+   * The highest-ranked main-programme audio track. Commentaries and audio
+   * description are never picked: when only those are in a preferred
+   * language, mpv's choice (the real programme) is kept.
+   */
+  function pickAudio(tracks, preferred) {
+    const main = tracks.filter(
+      (track) => track.type === 'audio' && !isCommentaryTrack(track) && !isAudioDescription(track)
+    );
+    return bestRankedTrack(main, preferred);
+  }
+
+  const KEEP_SUBTITLE = { action: 'keep' };
+  const SUBTITLE_OFF = { action: 'off' };
+
+  /**
+   * What to do with the subtitle for this audio track: keep mpv's choice,
+   * turn subtitles off, or select a track.
+   *
+   * A full subtitle is only picked in a language ranked above the audio's, so
+   * a viewer who gets audio in a language they prefer is not given subtitles
+   * for it, only the signs/songs track in that language when there is one.
+   */
+  function pickSubtitle(tracks, preferred, audio) {
+    // Untagged audio could be in any language, so there is no basis to choose.
+    if (!audio || !isKnownLanguage(audio.lang)) return KEEP_SUBTITLE;
+
+    const audioRank = preferenceRank(preferred, audio.lang);
+    const subtitles = tracks.filter((track) => track.type === 'sub' && !isCommentaryTrack(track));
+    const full = subtitles.filter((track) => !isForcedSubtitle(track));
+    const forced = subtitles.filter(isForcedSubtitle);
+
+    const betterFull = full.filter((track) => preferenceRank(preferred, track.lang) < audioRank);
+    const bestFull = bestRankedTrack(betterFull, preferred);
+    if (bestFull) return { action: 'select', track: bestFull };
+
+    if (audioRank !== Infinity) {
+      const signs = forced.find((track) => track.lang && languagesMatch(audio.lang, track.lang));
+      return signs ? { action: 'select', track: signs } : SUBTITLE_OFF;
+    }
+    // Audio in a language the viewer did not list and no full subtitle for
+    // it: a signs-only subtitle is still better than nothing.
+    const fallback = bestRankedTrack(forced, preferred);
+    return fallback ? { action: 'select', track: fallback } : KEEP_SUBTITLE;
+  }
+
+  /** Apply pickSubtitle's decision; returns the selected subtitle id or null. */
+  function applySubtitle(tracks, preferred, audio) {
+    const current = selectedTrack(tracks, 'sub');
+    const currentId = current ? current.id : null;
+    const decision = pickSubtitle(tracks, preferred, audio);
+
+    let id = currentId;
+    if (decision.action === 'off') id = null;
+    if (decision.action === 'select') id = decision.track.id;
+    if (id !== currentId) mpv.set('sid', id === null ? 'no' : String(id));
+
+    autoSubtitle = { generation: fileGeneration, id };
+    return id;
+  }
+
   /**
    * Switch to the preferred-language audio and subtitle tracks. Jellyfin
    * direct-play hands mpv the raw file, so mpv falls back to the container's
    * default-flagged tracks — often the original language, not the viewer's.
-   * Picks the first matching audio track (skipping commentaries) and the best
-   * matching subtitle, a full one before a forced/signs-only one.
+   * Languages are ranked in the order of preferred_languages. A preferred
+   * audio or subtitle language set in IINA (mpv's alang/slang) takes over the
+   * matching half, since mpv has already applied it.
    */
   function selectPreferredTracks() {
-    const preferred = String(preferences.get('preferred_languages') || 'en,eng')
-      .split(',')
-      .map((code) => code.trim())
-      .filter((code) => code.length > 0);
+    // Runs inside the file-loaded handler, ahead of progress sync, the title,
+    // autoplay and the subtitle downloads; a failure here must not stop them.
+    try {
+      const preferred = parsePreferredLanguages(preferences.get('preferred_languages'));
+      const tracks = readTracks();
 
-    const trackCount = mpv.getNumber('track-list/count') || 0;
-    let audio = null;
-    let audioAny = null;
-    let subtitle = null;
-    let subtitleForced = null;
-
-    for (let index = 0; index < trackCount; index++) {
-      const language = mpv.getString(`track-list/${index}/lang`);
-      if (!language || !preferred.some((code) => languagesMatch(code, language))) continue;
-
-      const id = mpv.getNumber(`track-list/${index}/id`);
-      const title = String(mpv.getString(`track-list/${index}/title`) || '').toLowerCase();
-      const type = mpv.getString(`track-list/${index}/type`);
-
-      if (type === 'audio') {
-        if (audioAny === null) audioAny = id;
-        if (audio === null && !title.includes('commentar')) audio = id;
-      } else if (type === 'sub') {
-        const forced =
-          Boolean(mpv.getFlag(`track-list/${index}/forced`)) || /forced|signs|songs/.test(title);
-        if (!forced && subtitle === null) subtitle = id;
-        if (forced && subtitleForced === null) subtitleForced = id;
+      let audio = selectedTrack(tracks, 'audio');
+      if (mpv.getString('alang')) {
+        log('Audio track left to the IINA/mpv alang setting');
+      } else {
+        const choice = pickAudio(tracks, preferred);
+        if (choice) {
+          if (!audio || audio.id !== choice.id) mpv.set('aid', String(choice.id));
+          audio = choice;
+        }
+        log(`Preferred audio track: aid=${audio ? audio.id : null}`);
       }
-    }
 
-    if (audio === null) audio = audioAny;
-    if (subtitle === null) subtitle = subtitleForced;
-    if (audio !== null) mpv.command('set', ['aid', String(audio)]);
-    if (subtitle !== null) mpv.command('set', ['sid', String(subtitle)]);
-    log(`Preferred track selection: aid=${audio} sid=${subtitle}`);
+      if (managesSubtitles()) {
+        log(`Preferred subtitle track: sid=${applySubtitle(tracks, preferred, audio)}`);
+      } else {
+        log('Subtitle track left to the IINA/mpv slang setting');
+      }
+    } catch (error) {
+      log(`Preferred track selection failed: ${error.message}`);
+    }
   }
 
   return {
