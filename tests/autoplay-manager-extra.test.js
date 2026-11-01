@@ -221,6 +221,48 @@ test('an episode response without a list is treated as a season with no episodes
   assert.ok(harness.requests.some((url) => url.includes('/Seasons?')));
 });
 
+// A failed request says nothing about the season, so autoplay must not read it
+// as the end of the season and skip the remaining episodes.
+for (const [description, get] of [
+  [
+    'a failing episode request',
+    async () => {
+      throw new Error('offline');
+    },
+  ],
+  ['an error status for the episode list', async () => ({ statusCode: 500, data: { Items: [] } })],
+  ['an empty episode response', async () => ({ statusCode: 200, data: undefined })],
+]) {
+  test(`${description} does not skip to the next season`, async () => {
+    const requests = [];
+    const harness = createHarness({
+      http: {
+        get: async (url) => {
+          requests.push(url);
+          if (url.includes('/Seasons?')) {
+            return {
+              data: {
+                Items: [
+                  { Id: 'S1', Name: 'Season 1', IndexNumber: 1 },
+                  { Id: 'S2', Name: 'Season 2', IndexNumber: 2 },
+                ],
+              },
+            };
+          }
+          if (url.includes('seasonId=S2')) return { data: { Items: [episode(1, { Id: 'S2E1' })] } };
+          return get(url);
+        },
+      },
+    });
+
+    await play(harness);
+
+    assert.deepEqual(harness.loadfiles, []);
+    assert.equal(harness.manager.isQueued(), false);
+    assert.ok(!requests.some((url) => url.includes('/Seasons?')));
+  });
+}
+
 test('an item that is not an episode gets no autoplay', async () => {
   const harness = createHarness({ metadata: { Type: 'Movie' } });
 

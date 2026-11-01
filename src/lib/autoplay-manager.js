@@ -15,57 +15,59 @@ function createAutoplayManager({
   let autoplayRequestCounter = 0;
   let autoplayQueued = false;
 
+  // Throws when the request fails. Callers must not read a failed request as
+  // an empty season: that would skip ahead to the next season.
   async function fetchSeriesEpisodes(serverBase, seriesId, seasonId, apiKey) {
-    try {
-      log(`Fetching episodes for series: ${seriesId}, season: ${seasonId}`);
+    log(`Fetching episodes for series: ${seriesId}, season: ${seasonId}`);
 
-      const queryParams = [
-        'seasonId=' + encodeURIComponent(seasonId),
-        'fields=' + encodeURIComponent('MediaSources,Path,LocationType,IsFolder'),
-      ].join('&');
+    const queryParams = [
+      'seasonId=' + encodeURIComponent(seasonId),
+      'fields=' + encodeURIComponent('MediaSources,Path,LocationType,IsFolder'),
+    ].join('&');
 
-      const response = await http.get(
-        `${serverBase}/Shows/${seriesId}/Episodes?${queryParams}&ApiKey=${apiKey}`,
-        {
-          headers: buildJellyfinHeaders(apiKey, {
-            Accept: 'application/json',
-          }),
-        }
-      );
-
-      if (!response.data) {
-        throw new Error('No data received from Jellyfin API');
+    const response = await http.get(
+      `${serverBase}/Shows/${seriesId}/Episodes?${queryParams}&ApiKey=${apiKey}`,
+      {
+        headers: buildJellyfinHeaders(apiKey, {
+          Accept: 'application/json',
+        }),
       }
+    );
 
-      const episodeData =
-        typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    // IINA's http resolves for every status, so check it before the body.
+    if (response.statusCode >= 400) {
+      throw new Error(`Jellyfin API returned status ${response.statusCode}`);
+    }
 
-      if (!episodeData.Items) {
-        log('No episodes found in response');
-        return [];
-      }
+    if (!response.data) {
+      throw new Error('No data received from Jellyfin API');
+    }
 
-      // Playback streams the item, so download permission is irrelevant here
-      const episodes = episodeData.Items.filter(
-        (episode) => episode.MediaSources && episode.MediaSources.length > 0
-      ).map((episode) => ({
-        id: episode.Id,
-        name: episode.Name,
-        indexNumber: Number(episode.IndexNumber) || 0,
-        duration: episode.RunTimeTicks,
-        playUrl: `${serverBase}/Videos/${episode.Id}/stream?static=true&ApiKey=${apiKey}`,
-      }));
+    const episodeData =
+      typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
 
-      episodes.sort((left, right) => left.indexNumber - right.indexNumber);
-
-      log(
-        `Fetched ${episodes.length} episodes from series: ${episodes.map((episode) => `E${episode.indexNumber}`).join(', ')}`
-      );
-      return episodes;
-    } catch (error) {
-      log(`Error fetching series episodes: ${error.message}`);
+    if (!episodeData.Items) {
+      log('No episodes found in response');
       return [];
     }
+
+    // Playback streams the item, so download permission is irrelevant here
+    const episodes = episodeData.Items.filter(
+      (episode) => episode.MediaSources && episode.MediaSources.length > 0
+    ).map((episode) => ({
+      id: episode.Id,
+      name: episode.Name,
+      indexNumber: Number(episode.IndexNumber) || 0,
+      duration: episode.RunTimeTicks,
+      playUrl: `${serverBase}/Videos/${episode.Id}/stream?static=true&ApiKey=${apiKey}`,
+    }));
+
+    episodes.sort((left, right) => left.indexNumber - right.indexNumber);
+
+    log(
+      `Fetched ${episodes.length} episodes from series: ${episodes.map((episode) => `E${episode.indexNumber}`).join(', ')}`
+    );
+    return episodes;
   }
 
   async function getSeriesInfoFromEpisode(serverBase, episodeId, apiKey) {
