@@ -76,7 +76,7 @@ test('a failure to create the player is reported back to the requesting player',
     {
       player: 'player-1',
       name: 'player-creation-failed',
-      data: { error: 'Error: no window', url: 'https://jf/Videos/1/stream' },
+      data: { error: 'Error: no window', url: 'https://jf/Videos/1/stream', title: 'Movie' },
     },
   ]);
 });

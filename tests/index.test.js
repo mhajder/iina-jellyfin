@@ -778,6 +778,32 @@ test('a new player that cannot be created falls back to the current window', () 
   assert.equal(plugin.osd.at(-1), 'Failed to open new window - opening in current window');
 });
 
+test('the current-window fallback clears the playlist and keeps the title', () => {
+  const plugin = loadPlugin({ prefs: { set_video_title: true } });
+
+  plugin.global.handlers['player-creation-failed']({
+    error: 'boom',
+    url: videoUrl(MOVIE),
+    title: 'Movie (2020)',
+  });
+
+  assert.deepEqual(plugin.commands, [['playlist-clear']]);
+  assert.deepEqual(plugin.opened, [videoUrl(MOVIE)]);
+  assert.equal(plugin.mpvProps.get('force-media-title'), 'Movie (2020)');
+});
+
+test('with open in new window but no global entry, the current window is used properly', () => {
+  const plugin = loadPlugin({ prefs: { open_in_new_window: true, set_video_title: true } });
+  plugin.loadSidebar();
+  plugin.global.postMessage = undefined;
+
+  plugin.sidebar.handlers['play-media']({ streamUrl: videoUrl(MOVIE), title: 'Movie (2020)' });
+
+  assert.deepEqual(plugin.commands, [['playlist-clear']]);
+  assert.deepEqual(plugin.opened, [videoUrl(MOVIE)]);
+  assert.equal(plugin.mpvProps.get('force-media-title'), 'Movie (2020)');
+});
+
 test('an album plays its first track and appends the rest once that track has loaded', () => {
   const plugin = loadPlugin({ prefs: { set_video_title: true } });
   plugin.loadSidebar();

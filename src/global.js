@@ -51,6 +51,8 @@ global.onMessage('create-player', (data, player) => {
       global.postMessage(player, 'player-creation-failed', {
         error: error.toString(),
         url: data?.url,
+        // The requester falls back to its own window and needs the title.
+        title: data?.title,
       });
     }
   }

@@ -581,9 +581,10 @@ if (typeof global !== 'undefined' && global.onMessage) {
   global.onMessage('player-creation-failed', (data) => {
     debugLog('Failed to create new player instance: ' + data?.error);
     core.osd('Failed to open new window - opening in current window');
-    // Fallback to current window
+    // Fall back to the current window exactly as if that had been chosen:
+    // clear what is queued, guard the stop report and keep the title.
     if (data?.url) {
-      core.open(data.url);
+      openInCurrentWindow(data.url, data.title || null);
     }
   });
 }
@@ -597,7 +598,7 @@ function openInNewInstance(streamUrl, title) {
     global.postMessage('create-player', { url: streamUrl, title: title });
   } else {
     debugLog('Global entry not available, opening in current window');
-    core.open(streamUrl);
+    openInCurrentWindow(streamUrl, title);
   }
 }
 
