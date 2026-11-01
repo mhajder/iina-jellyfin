@@ -163,6 +163,7 @@ const {
   updateFromFileUrl,
   invalidatePendingResults,
   setTitleForNextItem,
+  selectPreferredTracks,
 } = createMediaActionsManager({
   core,
   http,
@@ -223,6 +224,11 @@ function onFileLoaded(fileUrl) {
       storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
     } else {
       debugLog('Auto-login from Jellyfin URLs disabled, not storing the URL credentials');
+    }
+
+    // Select preferred-language audio/subtitle tracks if enabled
+    if (preferences.get('select_preferred_tracks')) {
+      selectPreferredTracks();
     }
 
     // Start playback tracking for progress sync

@@ -195,6 +195,7 @@ Access plugin settings through IINA → Preferences → Plugins → Jellyfin:
 - **Report to my connected account (ignore link's API key)**: When enabled, playback progress, resume, and watched status are reported to the Jellyfin account you're logged into via the browser sidebar, instead of the account whose `api_key` is embedded in the playing URL. Useful when several people open the same shared link (e.g. via Syncplay) — each viewer's progress records into their own account. Requires a logged-in server; falls back to the URL's `api_key` if none is connected.
 - **Show on-screen notifications**: Display OSD messages when subtitles are downloaded
 - **Preferred Languages**: Comma-separated language codes (e.g., `en,eng,pol,pl`)
+- **Select preferred-language tracks on play**: When playback starts, switch to the first audio track in a preferred language (skipping commentaries) and to the best matching subtitle, a full one before a forced/signs-only one. Jellyfin direct-play hands mpv the original file, so without this mpv keeps the container's default tracks — usually the original language.
 - **Download all available subtitles**: Download all subtitle tracks, ignoring language preferences
 - **Set video title from Jellyfin metadata**: Replace filenames with proper movie/show titles
 - **Open media in new IINA window**: Play media from browser in separate windows

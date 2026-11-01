@@ -378,6 +378,98 @@ test('an unnumbered episode still gets a title before loading', async () => {
   assert.equal(calls.title, 'Show - Special');
 });
 
+// mpv answer for a fixed track list, recording the tracks it is switched to.
+function mpvWithTracks(tracks) {
+  const selected = {};
+  return {
+    selected,
+    getNumber(name) {
+      if (name === 'track-list/count') return tracks.length;
+      const match = /^track-list\/(\d+)\/id$/.exec(name);
+      return match ? tracks[Number(match[1])].id : null;
+    },
+    getString(name) {
+      if (name === 'force-media-title') return '';
+      const match = /^track-list\/(\d+)\/(type|lang|title)$/.exec(name);
+      return match ? (tracks[Number(match[1])][match[2]] ?? '') : '';
+    },
+    getFlag(name) {
+      const match = /^track-list\/(\d+)\/forced$/.exec(name);
+      return match ? Boolean(tracks[Number(match[1])].forced) : false;
+    },
+    set() {},
+    command(command, args) {
+      if (command === 'set') selected[args[0]] = args[1];
+    },
+  };
+}
+
+test('the preferred language is selected for audio and subtitles', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese' },
+    { id: 2, type: 'audio', lang: 'eng', title: 'English' },
+    { id: 3, type: 'audio', lang: 'eng', title: 'English Commentary' },
+    { id: 4, type: 'sub', lang: 'eng', title: 'Signs & Songs', forced: true },
+    { id: 5, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '2', sid: '5' });
+});
+
+test('a commentary track is skipped when a plain one exists in that language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'Director Commentary' },
+    { id: 2, type: 'audio', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '2' });
+});
+
+test('a forced subtitle is used when it is the only one in that language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English' },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English', forced: true },
+  ]);
+  const { manager } = loadMediaActions({ mpv });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '1', sid: '2' });
+});
+
+test('a region suffix still matches the preferred language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'en-US', title: 'English (US)' },
+    { id: 2, type: 'audio', lang: 'jpn', title: 'Japanese' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: { get: () => 'eng' },
+  });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '1' });
+});
+
+test('tracks are left alone when none is in the preferred languages', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese' },
+    { id: 2, type: 'sub', lang: 'jpn', title: 'Japanese' },
+  ]);
+  const { manager } = loadMediaActions({ mpv });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
 test('a pre-load title does not replace one picked in the browser meanwhile', async () => {
   const metadata = deferred();
   const { manager, calls } = loadMediaActions({ fetchItemMetadata: () => metadata.promise });
