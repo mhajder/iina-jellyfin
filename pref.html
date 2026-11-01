@@ -167,6 +167,18 @@
 
     <div class="pref-section">
       <label>
+        <input type="checkbox" data-type="bool" data-pref-key="select_preferred_tracks" />
+        Select preferred-language tracks on play
+      </label>
+      <p class="small secondary pref-help">
+        When playback starts, automatically switch the audio and subtitle tracks to the first ones
+        matching the preferred languages above (skipping commentary audio and forced/signs-only
+        subtitles), instead of the file's own default tracks.
+      </p>
+    </div>
+
+    <div class="pref-section">
+      <label>
         <input type="checkbox" data-type="bool" data-pref-key="download_all_subtitles" />
         Download all available subtitles
       </label>

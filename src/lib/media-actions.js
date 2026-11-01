@@ -636,6 +636,51 @@ function createMediaActionsManager({
     return lastItemId;
   }
 
+  /**
+   * Switch to the preferred-language audio and subtitle tracks. Jellyfin
+   * direct-play hands mpv the raw file, so mpv falls back to the container's
+   * default-flagged tracks — often the original language, not the viewer's.
+   * Picks the first matching audio track (skipping commentaries) and the best
+   * matching subtitle, a full one before a forced/signs-only one.
+   */
+  function selectPreferredTracks() {
+    const preferred = String(preferences.get('preferred_languages') || 'en,eng')
+      .split(',')
+      .map((code) => code.trim())
+      .filter((code) => code.length > 0);
+
+    const trackCount = mpv.getNumber('track-list/count') || 0;
+    let audio = null;
+    let audioAny = null;
+    let subtitle = null;
+    let subtitleForced = null;
+
+    for (let index = 0; index < trackCount; index++) {
+      const language = mpv.getString(`track-list/${index}/lang`);
+      if (!language || !preferred.some((code) => languagesMatch(code, language))) continue;
+
+      const id = mpv.getNumber(`track-list/${index}/id`);
+      const title = String(mpv.getString(`track-list/${index}/title`) || '').toLowerCase();
+      const type = mpv.getString(`track-list/${index}/type`);
+
+      if (type === 'audio') {
+        if (audioAny === null) audioAny = id;
+        if (audio === null && !title.includes('commentar')) audio = id;
+      } else if (type === 'sub') {
+        const forced =
+          Boolean(mpv.getFlag(`track-list/${index}/forced`)) || /forced|signs|songs/.test(title);
+        if (!forced && subtitle === null) subtitle = id;
+        if (forced && subtitleForced === null) subtitleForced = id;
+      }
+    }
+
+    if (audio === null) audio = audioAny;
+    if (subtitle === null) subtitle = subtitleForced;
+    if (audio !== null) mpv.command('set', ['aid', String(audio)]);
+    if (subtitle !== null) mpv.command('set', ['sid', String(subtitle)]);
+    log(`Preferred track selection: aid=${audio} sid=${subtitle}`);
+  }
+
   return {
     applyTitleBeforeLoad,
     setVideoTitleFromMetadata,
@@ -645,6 +690,7 @@ function createMediaActionsManager({
     updateFromFileUrl,
     invalidatePendingResults,
     setTitleForNextItem,
+    selectPreferredTracks,
     getLastItemId,
   };
 }
