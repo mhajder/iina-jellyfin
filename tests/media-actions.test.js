@@ -13,12 +13,11 @@ function loadMediaActions(deps = {}, globals = {}) {
   });
   vm.runInContext(readFileSync('src/lib/media-actions.js', 'utf8'), context);
 
-  const calls = { loadTrack: [], mpvSet: [], title: '', titleSetLocally: false };
+  const calls = { mpvCommand: [], mpvSet: [], title: '', titleSetLocally: false };
   const prefs = { set_video_title: true, preferred_languages: 'en' };
   const manager = context.module.exports.createMediaActionsManager({
     core: {
       osd() {},
-      subtitle: { loadTrack: (path) => calls.loadTrack.push(path) },
       status: {},
     },
     http: { download: async () => {} },
@@ -32,6 +31,8 @@ function loadMediaActions(deps = {}, globals = {}) {
       getString: (name) => (name === 'force-media-title' ? calls.title : ''),
       getFlag: (name) =>
         name === 'option-info/force-media-title/set-locally' ? calls.titleSetLocally : false,
+      getNative: () => [],
+      command: (name, args) => calls.mpvCommand.push([name, args]),
     },
     parseJellyfinUrl: (url) => {
       const match = /\/Videos\/([^/]+)\//.exec(url);
@@ -84,7 +85,7 @@ test('subtitles that finish after the next file loaded are not attached to it', 
   download.resolve();
   await pending;
 
-  assert.deepEqual(calls.loadTrack, []);
+  assert.deepEqual(calls.mpvCommand, []);
 });
 
 test('a title that arrives after the next file loaded is not applied to it', async () => {
@@ -378,53 +379,151 @@ test('an unnumbered episode still gets a title before loading', async () => {
   assert.equal(calls.title, 'Show - Special');
 });
 
-// mpv answer for a fixed track list, recording the tracks it is switched to.
-function mpvWithTracks(tracks) {
+// mpv with a fixed track list, read through getNative('track-list') like the
+// real one. Records the tracks it is switched to and keeps each track's
+// selected flag in step. `options` answers getString (alang/slang).
+function mpvWithTracks(tracks, options = {}) {
   const selected = {};
+  const list = tracks.map((track) => ({ ...track }));
+  // mpv never reuses a track id, even after sub-remove.
+  let nextId = Math.max(0, ...tracks.map((track) => track.id)) + 1;
+  const select = (type, value) => {
+    for (const track of list) {
+      if (track.type === type) track.selected = String(track.id) === value;
+    }
+  };
   return {
     selected,
-    getNumber(name) {
-      if (name === 'track-list/count') return tracks.length;
-      const match = /^track-list\/(\d+)\/id$/.exec(name);
-      return match ? tracks[Number(match[1])].id : null;
+    tracks: list,
+    getNative: (name) => (name === 'track-list' ? list.map((track) => ({ ...track })) : null),
+    getString: (name) => options[name] ?? '',
+    getFlag: () => false,
+    set(name, value) {
+      if (name === 'aid' || name === 'sid') {
+        selected[name] = value;
+        select(name === 'aid' ? 'audio' : 'sub', value);
+      }
     },
-    getString(name) {
-      if (name === 'force-media-title') return '';
-      const match = /^track-list\/(\d+)\/(type|lang|title)$/.exec(name);
-      return match ? (tracks[Number(match[1])][match[2]] ?? '') : '';
-    },
-    getFlag(name) {
-      const match = /^track-list\/(\d+)\/forced$/.exec(name);
-      return match ? Boolean(tracks[Number(match[1])].forced) : false;
-    },
-    set() {},
+    commands: [],
     command(command, args) {
-      if (command === 'set') selected[args[0]] = args[1];
+      this.commands.push([command, ...args]);
+      if (command === 'sub-remove') {
+        list.splice(
+          list.findIndex((track) => track.type === 'sub' && String(track.id) === args[0]),
+          1
+        );
+      }
+      if (command !== 'sub-add') return;
+      // 'auto' adds the track without selecting it.
+      assert.equal(args[1], 'auto');
+      const id = nextId++;
+      list.push({ id, type: 'sub', title: args[2], lang: args[3], 'external-filename': args[0] });
     },
   };
 }
 
-test('the preferred language is selected for audio and subtitles', () => {
+function selectionPreferences(preferredLanguages = 'en') {
+  const prefs = { select_preferred_tracks: true, preferred_languages: preferredLanguages };
+  return { get: (key) => prefs[key] };
+}
+
+test('audio follows the order of the preferred languages, not the file order', () => {
   const mpv = mpvWithTracks([
-    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese' },
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'audio', lang: 'pol', title: 'Polski' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('pol,eng') });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '2' });
+});
+
+test('audio in a preferred language gets its signs track, not full subtitles', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
     { id: 2, type: 'audio', lang: 'eng', title: 'English' },
     { id: 3, type: 'audio', lang: 'eng', title: 'English Commentary' },
     { id: 4, type: 'sub', lang: 'eng', title: 'Signs & Songs', forced: true },
     { id: 5, type: 'sub', lang: 'eng', title: 'English' },
   ]);
-  const { manager } = loadMediaActions({ mpv });
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
 
   manager.selectPreferredTracks();
 
-  assert.deepEqual(mpv.selected, { aid: '2', sid: '5' });
+  assert.deepEqual(mpv.selected, { aid: '2', sid: '4' });
+});
+
+test('audio in a preferred language turns off a full subtitle in that language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English', selected: true },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: 'no' });
+});
+
+test('full subtitles are picked for audio in a language not listed', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Signs', forced: true },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('a subtitle in a language ranked above the audio is shown', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English' },
+    { id: 3, type: 'sub', lang: 'pol', title: 'Polski' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('pol,eng') });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('a commentary subtitle is never picked', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English Commentary' },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('a "Full + Songs" subtitle counts as a full one', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Songs' },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English (Full + Songs)' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
 });
 
 test('a commentary track is skipped when a plain one exists in that language', () => {
   const mpv = mpvWithTracks([
-    { id: 1, type: 'audio', lang: 'eng', title: 'Director Commentary' },
+    { id: 1, type: 'audio', lang: 'eng', title: 'Director Commentary', selected: true },
     { id: 2, type: 'audio', lang: 'eng', title: 'English' },
   ]);
-  const { manager } = loadMediaActions({ mpv });
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
 
   manager.selectPreferredTracks();
 
@@ -433,41 +532,221 @@ test('a commentary track is skipped when a plain one exists in that language', (
 
 test('a forced subtitle is used when it is the only one in that language', () => {
   const mpv = mpvWithTracks([
-    { id: 1, type: 'audio', lang: 'eng', title: 'English' },
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
     { id: 2, type: 'sub', lang: 'eng', title: 'English', forced: true },
   ]);
-  const { manager } = loadMediaActions({ mpv });
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
 
   manager.selectPreferredTracks();
 
-  assert.deepEqual(mpv.selected, { aid: '1', sid: '2' });
+  assert.deepEqual(mpv.selected, { sid: '2' });
 });
 
 test('a region suffix still matches the preferred language', () => {
   const mpv = mpvWithTracks([
-    { id: 1, type: 'audio', lang: 'en-US', title: 'English (US)' },
-    { id: 2, type: 'audio', lang: 'jpn', title: 'Japanese' },
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'audio', lang: 'en-US', title: 'English (US)' },
   ]);
-  const { manager } = loadMediaActions({
-    mpv,
-    preferences: { get: () => 'eng' },
-  });
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('eng') });
 
   manager.selectPreferredTracks();
 
-  assert.deepEqual(mpv.selected, { aid: '1' });
+  assert.deepEqual(mpv.selected, { aid: '2' });
 });
 
 test('tracks are left alone when none is in the preferred languages', () => {
   const mpv = mpvWithTracks([
-    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese' },
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
     { id: 2, type: 'sub', lang: 'jpn', title: 'Japanese' },
   ]);
-  const { manager } = loadMediaActions({ mpv });
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
 
   manager.selectPreferredTracks();
 
   assert.deepEqual(mpv.selected, {});
+});
+
+test('subtitles are left alone when the audio language is unknown', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'und', title: '', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('preferred languages set in IINA (alang/slang) are left in charge', () => {
+  const mpv = mpvWithTracks(
+    [
+      { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+      { id: 2, type: 'audio', lang: 'eng', title: 'English' },
+      { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+    ],
+    { alang: 'jpn', slang: 'jpn' }
+  );
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('a secondary subtitle is not taken for the current one', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English', selected: true, 'main-selection': 1 },
+    { id: 3, type: 'sub', lang: 'jpn', title: 'Japanese', selected: true, 'main-selection': 0 },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '2' });
+});
+
+test("mpv's pick is kept among tracks in the same language", () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'Stereo' },
+    { id: 2, type: 'audio', lang: 'eng', title: 'TrueHD 7.1', selected: true },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('a commentary or audio description is never a fallback for the main audio', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'audio', lang: 'eng', title: 'Director Commentary' },
+    { id: 3, type: 'audio', lang: 'eng', title: 'Audio Description' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.equal(mpv.selected.aid, undefined);
+});
+
+test('a "Full + Signs" subtitle counts as a full one', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Signs & Songs' },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English (Full + Signs)' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('an audio description track is skipped', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'audio', lang: 'eng', title: 'English', 'visual-impaired': true },
+    { id: 3, type: 'audio', lang: 'eng', title: 'English (AD)' },
+    { id: 4, type: 'audio', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { aid: '4' });
+});
+
+test('a failing track read does not throw out of the file-loaded handler', () => {
+  const mpv = mpvWithTracks([]);
+  mpv.getNative = () => {
+    throw new Error('no track-list');
+  };
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  assert.doesNotThrow(() => manager.selectPreferredTracks());
+});
+
+function externalEnglishSubtitle(stream = {}) {
+  return async () => ({
+    MediaSources: [
+      {
+        Id: 'ms',
+        MediaStreams: [
+          {
+            Type: 'Subtitle',
+            IsTextSubtitleStream: true,
+            IsExternal: true,
+            Language: 'en',
+            Index: 9,
+            ...stream,
+          },
+        ],
+      },
+    ],
+  });
+}
+
+test('a downloaded subtitle is ranked instead of replacing the choice', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Signs', forced: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  assert.equal(mpv.selected.sid, '2');
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '3');
+});
+
+test('a downloaded forced subtitle does not replace a full one', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    // Only IsForced says so; the title Jellyfin reports is plain.
+    fetchPlaybackInfo: externalEnglishSubtitle({ IsForced: true, Title: 'English' }),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '2');
+  assert.equal(mpv.tracks.at(-1).lang, 'en');
+  assert.equal(mpv.tracks.at(-1).title, 'English (Forced)');
+});
+
+test('a subtitle picked before the downloads finish is kept', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Signs', forced: true },
+    { id: 3, type: 'sub', lang: 'jpn', title: 'Japanese' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  mpv.set('sid', '3'); // the viewer switches to the Japanese subtitle
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '3');
 });
 
 test('a pre-load title does not replace one picked in the browser meanwhile', async () => {
@@ -482,4 +761,157 @@ test('a pre-load title does not replace one picked in the browser meanwhile', as
 
   await manager.applyTitleBeforeLoad(E02);
   assert.equal(calls.title, 'Movie X');
+});
+
+test('a manual download shows the subtitle even with audio in a preferred language', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K', { manual: true });
+
+  assert.equal(mpv.selected.sid, '2');
+});
+
+test('downloads are ranked when the selection did not run for the file', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '2');
+});
+
+test('with the setting off the newest download is shown, as before', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: { get: (key) => (key === 'preferred_languages' ? 'en' : undefined) },
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '2');
+});
+
+test('a subtitle downloaded again replaces the old track and keeps its labels', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'jpn', title: 'Japanese' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle({ IsForced: true, Title: 'English' }),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+  mpv.set('sid', '2');
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K', { manual: true });
+
+  assert.deepEqual(
+    mpv.commands.map(([command]) => command),
+    ['sub-add', 'sub-remove', 'sub-add']
+  );
+  const subtitles = mpv.tracks.filter((track) => track.type === 'sub');
+  assert.equal(subtitles.length, 2);
+  assert.equal(subtitles.at(-1).title, 'English (Forced)');
+  assert.equal(subtitles.at(-1).lang, 'en');
+});
+
+test('a subtitle downloaded again stays selected if it was playing', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences(),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+  assert.equal(mpv.selected.sid, '2');
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '3');
+  assert.equal(mpv.tracks.find((track) => track.selected && track.type === 'sub').id, 3);
+});
+
+test('a manual download picks the best-ranked full subtitle among the downloads', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+  ]);
+  const prefs = {
+    select_preferred_tracks: true,
+    preferred_languages: 'en',
+    download_all_subtitles: true,
+  };
+  const stream = (Index, Language, extra = {}) => ({
+    Type: 'Subtitle',
+    IsTextSubtitleStream: true,
+    IsExternal: true,
+    Index,
+    Language,
+    ...extra,
+  });
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: { get: (key) => prefs[key] },
+    fetchPlaybackInfo: async () => ({
+      MediaSources: [
+        {
+          Id: 'ms',
+          MediaStreams: [
+            stream(1, 'eng', { Title: 'English' }),
+            stream(2, 'fre', { Title: 'Français' }),
+            stream(3, 'eng', { IsForced: true, Title: 'English' }),
+          ],
+        },
+      ],
+    }),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K', { manual: true });
+
+  assert.equal(mpv.selected.sid, '2');
+  assert.equal(mpv.tracks.find((track) => track.id === 2).title, 'English');
+});
+
+test('an untagged download gets no made-up language', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
+  ]);
+  const prefs = { select_preferred_tracks: true, download_all_subtitles: true };
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: { get: (key) => prefs[key] },
+    fetchPlaybackInfo: externalEnglishSubtitle({ Language: undefined }),
+  });
+
+  manager.updateFromFileUrl(E01);
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.tracks.at(-1).lang, '');
 });

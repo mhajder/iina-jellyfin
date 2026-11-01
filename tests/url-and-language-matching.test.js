@@ -9,7 +9,7 @@ function createSubtitleHarness(languages, prefs = {}) {
   const downloads = [];
   const values = { preferred_languages: 'en,eng', download_all_subtitles: false, ...prefs };
   const manager = createMediaActionsManager({
-    core: { osd() {}, subtitle: { loadTrack() {} } },
+    core: { osd() {} },
     http: {
       async download(url) {
         downloads.push(url);
@@ -17,7 +17,7 @@ function createSubtitleHarness(languages, prefs = {}) {
     },
     utils: { resolvePath: (path) => path },
     preferences: { get: (key) => values[key] },
-    mpv: {},
+    mpv: { getNative: () => [], getString: () => '', command() {}, set() {} },
     parseJellyfinUrl() {},
     isJellyfinUrl() {},
     async fetchPlaybackInfo() {
