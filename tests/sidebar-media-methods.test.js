@@ -1091,6 +1091,20 @@ test('choosing an album shows its tracks and clicking a track plays it', async (
   assert.equal(posted[1].data.url, `${SERVER}/web/index.html#!/details?id=al1`);
 });
 
+test('playing a track keeps the album view open when the episode picker was never opened', async () => {
+  const { client, document, http } = createClient();
+  http.reply = () => ({ Items: [{ Id: 't1', Type: 'Audio', Name: 'So What', IndexNumber: 1 }] });
+
+  client
+    .createMusicItemElement({ Id: 'al1', Type: 'MusicAlbum', Name: 'Kind of Blue' }, 'album')
+    .click();
+  await flush();
+  document.getElementById('albumTracksList').children[0].click();
+
+  assert.equal(document.getElementById('albumTracksSection').style.display, 'block');
+  assert.equal(document.getElementById('mainContent').style.display, 'none');
+});
+
 test('an album without tracks or with a failed request says so', async () => {
   const { client, document, http } = createClient();
   const list = document.getElementById('albumTracksList');

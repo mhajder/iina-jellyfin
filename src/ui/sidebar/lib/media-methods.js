@@ -1488,7 +1488,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             title: item.Name || 'Unknown Title',
           });
 
-          if (document.getElementById('episodeSection').style.display !== 'none') {
+          // The section is hidden by CSS, so its inline style starts empty;
+          // only showEpisodeSelection() sets it to 'block'. Checking for
+          // !== 'none' would treat a never-opened picker as open and bring
+          // the main list back over the album tracks.
+          if (document.getElementById('episodeSection').style.display === 'block') {
             this.hideEpisodeSelection();
           }
         } else {
