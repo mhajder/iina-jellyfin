@@ -234,6 +234,22 @@ test('each subtitle codec is downloaded with its own file extension', async () =
   );
 });
 
+test('subtitle codecs reported in uppercase keep their file extension', async () => {
+  const codecs = ['ASS', 'SSA', 'WebVTT', 'SubRip'];
+  const harness = createManager({
+    prefs: { download_all_subtitles: true },
+    fetchPlaybackInfo: withStreams(...codecs.map((Codec, index) => sidecar(index, { Codec }))),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K');
+
+  assert.deepEqual(
+    harness.downloads.map((download) => download.url.match(/stream\.(\w+)\?/)[1]),
+    ['ass', 'ssa', 'vtt', 'srt']
+  );
+});
+
 test('a subtitle is saved under the item, the track and its server file name', async () => {
   const harness = createManager({
     prefs: { download_all_subtitles: true },
