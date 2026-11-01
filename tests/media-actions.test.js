@@ -422,8 +422,12 @@ function mpvWithTracks(tracks, options = {}) {
   };
 }
 
-function selectionPreferences(preferredLanguages = 'en') {
-  const prefs = { select_preferred_tracks: true, preferred_languages: preferredLanguages };
+function selectionPreferences(preferredLanguages = 'en', extra = {}) {
+  const prefs = {
+    select_preferred_tracks: true,
+    preferred_languages: preferredLanguages,
+    ...extra,
+  };
   return { get: (key) => prefs[key] };
 }
 
@@ -594,17 +598,41 @@ test('preferred languages set in IINA (alang/slang) are left in charge', () => {
   assert.deepEqual(mpv.selected, {});
 });
 
-test('a secondary subtitle is not taken for the current one', () => {
+test('a language shown as the secondary subtitle is not shown twice', () => {
   const mpv = mpvWithTracks([
     { id: 1, type: 'audio', lang: 'jpn', title: 'Japanese', selected: true },
     { id: 2, type: 'sub', lang: 'eng', title: 'English', selected: true, 'main-selection': 1 },
+    { id: 3, type: 'sub', lang: 'jpn', title: 'Japanese', selected: true, 'main-selection': 0 },
+    { id: 4, type: 'sub', lang: 'eng', title: 'English (Full)' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
+
+  manager.selectPreferredTracks();
+
+  // English already plays as the secondary subtitle; making track 4 the main
+  // one would show the same dialogue twice.
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('a signs track playing as the secondary subtitle keeps the main one on', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    {
+      id: 2,
+      type: 'sub',
+      lang: 'eng',
+      title: 'Signs',
+      forced: true,
+      selected: true,
+      'main-selection': 1,
+    },
     { id: 3, type: 'sub', lang: 'jpn', title: 'Japanese', selected: true, 'main-selection': 0 },
   ]);
   const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences() });
 
   manager.selectPreferredTracks();
 
-  assert.deepEqual(mpv.selected, { sid: '2' });
+  assert.deepEqual(mpv.selected, {});
 });
 
 test("mpv's pick is kept among tracks in the same language", () => {
@@ -939,4 +967,133 @@ test('subtitles are downloaded from the version playing', async () => {
   await manager.downloadAllSubtitles('https://jf', 'e01', 'K', { mediaSourceId: 'second' });
 
   assert.deepEqual(downloads, ['https://jf/Videos/e01/second/Subtitles/5/stream.srt?ApiKey=K']);
+});
+
+const ALWAYS_ON = { subtitles_always_on: true };
+
+test('always show subtitles turns them on for audio in a preferred language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'Signs', forced: true },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('en', ALWAYS_ON) });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('always show subtitles keeps the subtitle mpv picked in the same language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English' },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English SDH', selected: true },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('en', ALWAYS_ON) });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('always show subtitles works with untagged audio', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'und', title: '', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('en', ALWAYS_ON) });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '2' });
+});
+
+test('always show subtitles does not keep a subtitle in an unlisted language', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'jpn', title: 'Japanese', selected: true },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('en', ALWAYS_ON) });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: 'no' });
+});
+
+test('without a full subtitle, always show subtitles uses the signs track for the audio', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'pol', title: 'Napisy', forced: true },
+    { id: 3, type: 'sub', lang: 'eng', title: 'Signs', forced: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences('pol,eng', ALWAYS_ON),
+  });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '3' });
+});
+
+test('always show subtitles does not repeat the secondary subtitle', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'eng', title: 'English SDH', selected: true, 'main-selection': 1 },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({ mpv, preferences: selectionPreferences('en', ALWAYS_ON) });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('always show subtitles keeps the signs track for a dub over a lower-ranked full one', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'pol', title: 'Polski', selected: true },
+    { id: 2, type: 'sub', lang: 'pol', title: 'Napisy', forced: true },
+    { id: 3, type: 'sub', lang: 'eng', title: 'English' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences('pol,eng', ALWAYS_ON),
+  });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, { sid: '2' });
+});
+
+test('always show subtitles does not turn on a language ranked below the audio', () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+    { id: 2, type: 'sub', lang: 'pol', title: 'Polski' },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences('en,pl', ALWAYS_ON),
+  });
+
+  manager.selectPreferredTracks();
+
+  assert.deepEqual(mpv.selected, {});
+});
+
+test('a downloaded subtitle is shown with always show subtitles on', async () => {
+  const mpv = mpvWithTracks([
+    { id: 1, type: 'audio', lang: 'eng', title: 'English', selected: true },
+  ]);
+  const { manager } = loadMediaActions({
+    mpv,
+    preferences: selectionPreferences('en', ALWAYS_ON),
+    fetchPlaybackInfo: externalEnglishSubtitle(),
+  });
+
+  manager.updateFromFileUrl(E01);
+  manager.selectPreferredTracks();
+  await manager.downloadAllSubtitles('https://jf', 'e01', 'K');
+
+  assert.equal(mpv.selected.sid, '2');
 });

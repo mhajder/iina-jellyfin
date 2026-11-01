@@ -172,12 +172,24 @@
       </label>
       <p class="help">
         When playback starts, switch to the audio in your most preferred language, never a
-        commentary or audio description. Subtitles are turned on only when the audio is not in a
-        language you rank higher; otherwise only a signs/songs track in the audio's language is
-        used, if there is one.
+        commentary or audio description. Unless <strong>Always show subtitles</strong> is on,
+        subtitles are turned on only when the audio is not in a language you rank higher; otherwise
+        only a signs/songs track in the audio's language is used, if there is one.
       </p>
       <p class="help">
         A preferred audio or subtitle language set in IINA's own settings takes precedence.
+      </p>
+    </div>
+
+    <div class="pref check depends">
+      <label>
+        <input type="checkbox" data-type="bool" data-pref-key="subtitles_always_on" />
+        Always show subtitles
+      </label>
+      <p class="help">
+        Also turn on full subtitles in the audio's own language. Subtitles in a language you rank
+        below the audio's stay off. Needs the option above, and has no effect when a preferred
+        subtitle language is set in IINA's own settings.
       </p>
     </div>
 
