@@ -26,6 +26,7 @@
   "preferenceDefaults": {
     "auto_download_enabled": true,
     "select_preferred_tracks": true,
+    "subtitles_always_on": false,
     "preferred_languages": "en,eng",
     "download_all_subtitles": false,
     "show_notifications": false,

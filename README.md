@@ -190,7 +190,8 @@ Access plugin settings through IINA → Settings → Plugins → Jellyfin. They 
 ### Languages & Subtitles
 
 - **Preferred languages**: Comma-separated language codes, most preferred first (e.g. `pol,eng`). 2- and 3-letter codes both work. Used for subtitle downloads and track selection.
-- **Pick audio and subtitles in my languages**: When playback starts, switch to the audio in your most preferred language (never a commentary or audio description). Full subtitles are turned on only when the audio is not in a language you rank higher, otherwise just a signs/songs track in the audio's language, and downloaded subtitles are ranked the same way. Preferred audio/subtitle languages set in IINA's own settings take precedence. Jellyfin direct-play hands mpv the original file, so without this mpv keeps the container's default tracks — usually the original language.
+- **Pick audio and subtitles in my languages**: When playback starts, switch to the audio in your most preferred language (never a commentary or audio description). Unless **Always show subtitles** is on, full subtitles are turned on only when the audio is not in a language you rank higher, otherwise just a signs/songs track in the audio's language, and downloaded subtitles are ranked the same way. Preferred audio/subtitle languages set in IINA's own settings take precedence. Jellyfin direct-play hands mpv the original file, so without this mpv keeps the container's default tracks — usually the original language.
+  - **Always show subtitles**: Also turn on full subtitles in the audio's own language; subtitles in a language you rank below the audio's stay off. Has no effect when a preferred subtitle language is set in IINA's own settings.
 - **Download subtitles automatically**: Download the item's external subtitle files in your preferred languages when Jellyfin media opens
 - **Download subtitles in every language**: Ignore the preferred languages when downloading external subtitles
 

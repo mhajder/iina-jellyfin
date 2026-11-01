@@ -144,20 +144,26 @@ function preferenceRank(preferred, language) {
  * (secondary-sid) is "selected" too, with main-selection 1.
  */
 function isMainSelection(track) {
-  return Boolean(track.selected) && track['main-selection'] !== 1;
+  return Boolean(track.selected) && !isSecondarySubtitle(track);
+}
+
+/** A subtitle playing as the secondary one (secondary-sid). */
+function isSecondarySubtitle(track) {
+  return Boolean(track.selected) && track['main-selection'] === 1;
 }
 
 /**
- * The track whose language ranks highest. On a tie the track playing now
+ * The track whose language ranks highest. On a tie a track playing now
  * wins, so mpv's pick among same-language tracks (e.g. the default 7.1 mix
- * over a 2.0 one) is kept; otherwise the file order decides.
+ * over a 2.0 one) is kept, and a language already shown as the secondary
+ * subtitle stays covered by it; otherwise the file order decides.
  */
 function bestRankedTrack(tracks, preferred) {
   let best = null;
   let bestRank = Infinity;
   for (const track of tracks) {
     const rank = preferenceRank(preferred, track.lang);
-    const winsTie = rank === bestRank && rank !== Infinity && isMainSelection(track);
+    const winsTie = rank === bestRank && rank !== Infinity && track.selected;
     if (rank < bestRank || winsTie) {
       best = track;
       bestRank = rank;
@@ -859,18 +865,30 @@ function createMediaActionsManager({
    * A full subtitle is only picked in a language ranked above the audio's, so
    * a viewer who gets audio in a language they prefer is not given subtitles
    * for it, only the signs/songs track in that language when there is one.
+   * With subtitles_always_on, a full subtitle ranked at or above the audio's
+   * language is picked, so same-language subtitles come on too, but never
+   * ones in a language the viewer ranks below the audio's.
    */
   function pickSubtitle(tracks, preferred, audio) {
-    // Untagged audio could be in any language, so there is no basis to choose.
-    if (!audio || !isKnownLanguage(audio.lang)) return KEEP_SUBTITLE;
-
-    const audioRank = preferenceRank(preferred, audio.lang);
+    const alwaysOn = Boolean(preferences.get('subtitles_always_on'));
     const subtitles = tracks.filter((track) => track.type === 'sub' && !isCommentaryTrack(track));
     const full = subtitles.filter((track) => !isForcedSubtitle(track));
     const forced = subtitles.filter(isForcedSubtitle);
 
-    const betterFull = full.filter((track) => preferenceRank(preferred, track.lang) < audioRank);
-    const bestFull = bestRankedTrack(betterFull, preferred);
+    // Untagged audio could be in any language, so there is no basis to choose,
+    // unless the viewer wants subtitles whatever the audio.
+    if (!audio || !isKnownLanguage(audio.lang)) {
+      const track = alwaysOn ? bestRankedTrack(full, preferred) : null;
+      return track ? { action: 'select', track } : KEEP_SUBTITLE;
+    }
+
+    const audioRank = preferenceRank(preferred, audio.lang);
+
+    const shownFull = full.filter((track) => {
+      const rank = preferenceRank(preferred, track.lang);
+      return alwaysOn ? rank <= audioRank : rank < audioRank;
+    });
+    const bestFull = bestRankedTrack(shownFull, preferred);
     if (bestFull) return { action: 'select', track: bestFull };
 
     if (audioRank !== Infinity) {
@@ -891,7 +909,11 @@ function createMediaActionsManager({
 
     let id = currentId;
     if (decision.action === 'off') id = null;
-    if (decision.action === 'select') id = decision.track.id;
+    // mpv will not make the secondary subtitle the main one too; it already
+    // shows that language, so the main subtitle stays as it is.
+    if (decision.action === 'select' && !isSecondarySubtitle(decision.track)) {
+      id = decision.track.id;
+    }
     if (id !== currentId) mpv.set('sid', id === null ? 'no' : String(id));
 
     autoSubtitle = { generation: fileGeneration, id };
