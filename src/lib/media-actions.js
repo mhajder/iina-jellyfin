@@ -570,7 +570,17 @@ function createMediaActionsManager({
     if (choice && choice.id !== currentId) mpv.set('sid', String(choice.id));
   }
 
-  async function downloadAllSubtitles(serverBase, itemId, apiKey, { manual = false } = {}) {
+  /**
+   * Options: manual for a download the viewer asked for from the menu, and
+   * mediaSourceId for the version playing (sidecar subtitles belong to one
+   * version's file); without it, the first version.
+   */
+  async function downloadAllSubtitles(
+    serverBase,
+    itemId,
+    apiKey,
+    { manual = false, mediaSourceId = null } = {}
+  ) {
     const generation = fileGeneration;
     try {
       const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
@@ -585,7 +595,9 @@ function createMediaActionsManager({
         return;
       }
 
-      const mediaSource = playbackInfo.MediaSources[0];
+      const mediaSource =
+        playbackInfo.MediaSources.find((source) => source.Id === mediaSourceId) ||
+        playbackInfo.MediaSources[0];
       const mediaStreams = mediaSource.MediaStreams || [];
 
       // External sidecar files only. Embedded tracks would have to be extracted
@@ -728,6 +740,7 @@ function createMediaActionsManager({
     core.osd('Downloading subtitles...');
     downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey, {
       manual: true,
+      mediaSourceId: jellyfinInfo.mediaSourceId,
     });
   }
 

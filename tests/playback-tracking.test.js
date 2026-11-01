@@ -222,3 +222,39 @@ test('a stop report that never lands holds the resume read back only until the c
   const instantTimers = { setTimeout: (callback) => setImmediate(callback) };
   assert.deepEqual(await reopenAfterPlaying('itemA', instantTimers), ['resume read itemA']);
 });
+
+test('a version switch reports its version and skips the resume seek', async () => {
+  let metadataRequests = 0;
+  const { tracker, requests } = createTracker({
+    fetchPlaybackInfo: async () => ({ PlaySessionId: 'session', MediaSources: [{ Id: 'first' }] }),
+    fetchItemMetadata: async () => {
+      metadataRequests++;
+      return { UserData: { PlaybackPositionTicks: 600 * 10000000 } };
+    },
+  });
+
+  await tracker.startPlaybackTracking('https://jf.example', 'itemA', 'key', {
+    mediaSourceId: 'second',
+    startPosition: 1234,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  tracker.stopPlaybackTracking();
+
+  const start = requests.find((request) => request.url.includes('/Sessions/Playing?'));
+  assert.equal(start.data.MediaSourceId, 'second');
+  assert.equal(metadataRequests, 0);
+  // Stopped before playback was seen: the switch position stands in for the resume point.
+  const stop = requests.find((request) => request.url.includes('/Sessions/Playing/Stopped'));
+  assert.equal(stop.data.PositionTicks, 1234 * 10000000);
+});
+
+test('without a version in the URL the first media source is reported', async () => {
+  const { tracker, requests } = createTracker({
+    fetchPlaybackInfo: async () => ({ PlaySessionId: 'session', MediaSources: [{ Id: 'first' }] }),
+  });
+
+  await tracker.startPlaybackTracking('https://jf.example', 'itemA', 'key');
+
+  const start = requests.find((request) => request.url.includes('/Sessions/Playing?'));
+  assert.equal(start.data.MediaSourceId, 'first');
+});

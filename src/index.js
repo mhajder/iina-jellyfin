@@ -8,6 +8,11 @@ const { createServerSessionStore } = require('./lib/server-session-store.js');
 const { createPlaybackTrackingManager } = require('./lib/playback-tracking.js');
 const { createAutoplayManager } = require('./lib/autoplay-manager.js');
 const { createMediaActionsManager, mediaTitleOption } = require('./lib/media-actions.js');
+const {
+  withMediaSourceId,
+  listVersions,
+  createVersionSwitchState,
+} = require('./lib/media-versions.js');
 
 const {
   core,
@@ -190,6 +195,8 @@ function onFileLoaded(fileUrl) {
   stopPlaybackTracking();
 
   const jellyfinInfo = updateFromFileUrl(fileUrl);
+  const switchPosition = versionSwitch.finish(jellyfinInfo);
+  updateVersionMenu(jellyfinInfo, fileUrl);
   if (jellyfinInfo) {
     // Decide which credentials playback reporting (progress/resume/watched)
     // should use. By default it's the api_key embedded in the playing URL, so
@@ -234,7 +241,10 @@ function onFileLoaded(fileUrl) {
     // Start playback tracking for progress sync
     if (preferences.get('sync_playback_progress')) {
       debugLog(`Starting playback tracking for: ${jellyfinInfo.itemId}`);
-      startPlaybackTracking(reportServerBase, jellyfinInfo.itemId, reportApiKey);
+      startPlaybackTracking(reportServerBase, jellyfinInfo.itemId, reportApiKey, {
+        mediaSourceId: jellyfinInfo.mediaSourceId,
+        startPosition: switchPosition,
+      });
     }
 
     // Set video title from metadata if enabled
@@ -253,7 +263,9 @@ function onFileLoaded(fileUrl) {
     // Only auto-download if enabled
     if (preferences.get('auto_download_enabled')) {
       debugLog(`Auto-downloading subtitles for: ${jellyfinInfo.itemId}`);
-      downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
+      downloadAllSubtitles(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey, {
+        mediaSourceId: jellyfinInfo.mediaSourceId,
+      });
     } else {
       debugLog('Auto download disabled, but Jellyfin URL stored for manual download');
     }
@@ -452,33 +464,105 @@ function openJellyfinStandaloneWindow(sessionData) {
   }
 }
 
-// Menu items
-// A retry from the menu must ask the server again, not reuse the response
-// that left the file without subtitles or a title.
-menu.addItem(
-  menu.item('Download Jellyfin Subtitles', () => {
-    forgetItemRequests();
-    manualDownloadSubtitles();
-  })
-);
-menu.addItem(
-  menu.item('Set Jellyfin Title', () => {
-    forgetItemRequests();
-    manualSetTitle();
-  })
-);
-menu.addItem(
-  menu.item(
-    'Show Jellyfin Browser',
-    () => {
-      showJellyfinBrowser();
-    },
-    // mpv key binding format: Command is "Meta". Unknown modifier names are
-    // dropped silently, so "Cmd+Shift+J" would bind plain Shift+J and steal
-    // IINA's own "cycle subtitles backward" shortcut.
-    { keyBinding: 'Meta+Shift+j' }
-  )
-);
+// Menu items. The version submenu changes with every file, and IINA menu
+// items cannot be added or removed in place, so the whole menu is rebuilt.
+function buildMenu(versions, { update = false } = {}) {
+  menu.removeAllItems();
+
+  // A retry from the menu must ask the server again, not reuse the response
+  // that left the file without subtitles or a title.
+  menu.addItem(
+    menu.item('Download Jellyfin Subtitles', () => {
+      forgetItemRequests();
+      manualDownloadSubtitles();
+    })
+  );
+  menu.addItem(
+    menu.item('Set Jellyfin Title', () => {
+      forgetItemRequests();
+      manualSetTitle();
+    })
+  );
+  menu.addItem(
+    menu.item(
+      'Show Jellyfin Browser',
+      () => {
+        showJellyfinBrowser();
+      },
+      // mpv key binding format: Command is "Meta". Unknown modifier names are
+      // dropped silently, so "Cmd+Shift+J" would bind plain Shift+J and steal
+      // IINA's own "cycle subtitles backward" shortcut.
+      { keyBinding: 'Meta+Shift+j' }
+    )
+  );
+
+  // Only items with more than one version get the submenu.
+  if (versions.length > 1) {
+    const versionMenu = menu.item('Jellyfin Version');
+    for (const version of versions) {
+      versionMenu.addSubMenuItem(
+        menu.item(version.label, () => switchVersion(version), { selected: version.current })
+      );
+    }
+    menu.addItem(versionMenu);
+  }
+
+  if (update) menu.forceUpdate();
+}
+
+buildMenu([]);
+
+// The Jellyfin file playing and its versions, as listed in the menu.
+let versionMenuFile = null;
+let versionMenuRequest = 0;
+const versionSwitch = createVersionSwitchState();
+
+/**
+ * List the versions of the file that just loaded in the menu. The menu is
+ * cleared first, so a previous item's versions can never be picked for it.
+ */
+async function updateVersionMenu(jellyfinInfo, fileUrl) {
+  const request = ++versionMenuRequest;
+  if (versionMenuFile) {
+    versionMenuFile = null;
+    buildMenu([], { update: true });
+  }
+  if (!jellyfinInfo) return;
+
+  try {
+    const { serverBase, itemId, apiKey, mediaSourceId } = jellyfinInfo;
+    const playbackInfo = await fetchPlaybackInfo(serverBase, itemId, apiKey);
+    if (request !== versionMenuRequest) return;
+
+    const versions = listVersions(playbackInfo, mediaSourceId);
+    if (versions.length < 2) return;
+
+    const playing = versions.find((version) => version.current);
+    versionMenuFile = { itemId, url: fileUrl, mediaSourceId: playing.id };
+    debugLog(`${versions.length} versions of ${itemId}, playing ${playing.label}`);
+    buildMenu(versions, { update: true });
+  } catch (error) {
+    debugLog(`Could not list the versions of this item: ${error.message}`);
+  }
+}
+
+/**
+ * Reopen the item in another version at the current position. The on_load
+ * hook starts it there, and playback tracking skips its resume seek.
+ */
+function switchVersion(version) {
+  const playing = versionMenuFile;
+  if (!playing || version.id === playing.mediaSourceId) return;
+
+  const position = Number(core.status.position) || 0;
+  debugLog(`Switching ${playing.itemId} to version ${version.id} at ${position}s`);
+  versionSwitch.begin(playing.itemId, version.id, position);
+  core.osd(`Switching to ${version.label}`);
+  openInCurrentWindow(
+    withMediaSourceId(playing.url, version.id),
+    mpv.getString('media-title') || null
+  );
+}
 
 // Replies from the global entry are registered once at load. IINA has no off(),
 // and the reply can arrive at any time, so a per-request listener isn't possible.
@@ -682,8 +766,17 @@ event.on('iina.file-loaded', onFileLoaded);
 // Holds the load until the Jellyfin title is set, so the playlist entry gets
 // it too. IINA only waits for next() when the callback is an async function.
 mpv.addHook('on_load', 50, async (next) => {
+  const url = mpv.getString('stream-open-filename');
   try {
-    await applyTitleBeforeLoad(mpv.getString('stream-open-filename'));
+    // A per-file start set here applies before mpv opens the file, and wins
+    // over IINA's own resume point, which mpv has already read by now.
+    const start = versionSwitch.startPositionFor(parseJellyfinUrl(url));
+    if (start !== null) mpv.set('file-local-options/start', String(start));
+  } catch (error) {
+    debugLog(`Could not set the version switch start position: ${error.message}`);
+  }
+  try {
+    await applyTitleBeforeLoad(url);
   } catch (error) {
     debugLog(`Could not set the title before loading: ${error.message}`);
   } finally {
