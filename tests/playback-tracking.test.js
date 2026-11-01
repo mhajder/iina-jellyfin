@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { runScript } from './helpers/load-commonjs.js';
 
 function createTracker(overrides = {}, globals = {}) {
   const status = { position: 0, duration: 3600, paused: false };
@@ -18,7 +18,7 @@ function createTracker(overrides = {}, globals = {}) {
     clearTimeout() {},
     ...globals,
   });
-  vm.runInContext(readFileSync('src/lib/playback-tracking.js', 'utf8'), context);
+  runScript('src/lib/playback-tracking.js', context);
 
   const tracker = context.module.exports.createPlaybackTrackingManager({
     core: { status, seekTo() {}, osd() {} },

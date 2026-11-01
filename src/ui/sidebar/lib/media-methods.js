@@ -20,7 +20,21 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       return true;
     },
 
+    /**
+     * Move every ticket on so no reply to a request already in flight is
+     * rendered. Requests started afterwards take fresh tickets.
+     */
+    invalidatePendingRequests() {
+      if (!this.requestIds) return;
+      for (const key of Object.keys(this.requestIds)) {
+        this.requestIds[key]++;
+      }
+    },
+
     showMainContent() {
+      // Called once a login or server switch succeeds: anything still in
+      // flight was asked of the previous server or session.
+      this.invalidatePendingRequests();
       document.getElementById('mainContent').style.display = 'block';
       this.scrollToTop();
       this.loadGenres();
@@ -29,6 +43,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
     async loadGenres() {
       if (!this.currentServer || !this.currentUser) return;
+      const requestId = this.nextRequestId('genres');
 
       try {
         const params = new URLSearchParams({
@@ -44,6 +59,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
+
+        if (!this.isLatestRequest('genres', requestId)) return;
 
         if (response.data && response.data.Items) {
           const moviesGenreSelect = document.getElementById('moviesGenreSelect');
@@ -79,6 +96,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
      * stale content from a previous server being visible on reconnect.
      */
     clearAllMediaContent() {
+      // Requests still in flight belong to the previous server or session:
+      // none of their replies may be rendered.
+      this.invalidatePendingRequests();
+
       // Reset selection state
       this.selectedItem = null;
       this.selectedSeason = null;
@@ -401,6 +422,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     async search(term) {
+      // Take the ticket before any early return: clearing the box or the type
+      // chips must also invalidate a search still in flight, or its slow reply
+      // would replace the prompt shown below.
+      const requestId = this.nextRequestId('search');
+
       if (!this.currentServer || !this.currentUser || !term.trim()) {
         document.getElementById('searchResults').innerHTML =
           '<div class="empty-state">Enter a search term above</div>';
@@ -417,7 +443,6 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       }
 
       searchResults.innerHTML = '<div class="loading">Searching...</div>';
-      const requestId = this.nextRequestId('search');
 
       try {
         const params = new URLSearchParams({
@@ -678,10 +703,14 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         name: item?.Name,
       });
       this.selectedItem = item;
+      // A search result still being looked up must not replace this choice.
+      this.nextRequestId('searchItem');
 
       document.querySelectorAll('.media-item').forEach((el) => el.classList.remove('selected'));
       // The item is not always on screen (e.g. selected from search results)
-      const selectedEl = document.querySelector(`[data-item-id="${item.Id}"]`);
+      // Escaped so an id with a quote or backslash cannot break the selector.
+      const quotedId = String(item.Id).replace(/["\\]/g, '\\$&');
+      const selectedEl = document.querySelector(`[data-item-id="${quotedId}"]`);
       if (selectedEl) {
         selectedEl.classList.add('selected');
       }
@@ -699,6 +728,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     async selectSearchItem(hint) {
+      // A result chosen before signing out or switching server must not
+      // start playing once its slow reply arrives.
+      const requestId = this.nextRequestId('searchItem');
+
       try {
         const params = new URLSearchParams({
           userId: this.currentUser.Id,
@@ -713,10 +746,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           }
         );
 
+        if (!this.isLatestRequest('searchItem', requestId)) return;
+
         if (response.data) {
           this.selectMediaItem(response.data);
         }
       } catch (error) {
+        if (!this.isLatestRequest('searchItem', requestId)) return;
         // The webview has no core API — iina here only exposes postMessage and
         // onMessage — so report failures in the UI, not through an OSD.
         debugLog('Error getting item details:', error);
@@ -938,7 +974,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         debugLog('Item details:', item);
         debugLog('Server details:', this.currentServer);
 
-        const jellyfinUrl = `${this.currentServer.url}/web/index.html#!/details?id=${item.Id}`;
+        const jellyfinUrl = `${this.currentServer.url}/web/index.html#!/details?id=${encodeURIComponent(item.Id)}`;
 
         debugLog(`Constructed Jellyfin URL: ${jellyfinUrl}`);
         debugLog('Using IINA postMessage API to open URL in default browser');
@@ -1118,6 +1154,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
     async loadMusicGenres() {
       if (!this.currentServer || !this.currentUser) return;
+      const requestId = this.nextRequestId('musicGenres');
 
       try {
         const params = new URLSearchParams({
@@ -1132,6 +1169,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
+
+        if (!this.isLatestRequest('musicGenres', requestId)) return;
 
         if (response.data && response.data.Items) {
           const musicGenreSelect = document.getElementById('musicGenreSelect');
@@ -1484,7 +1523,11 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             title: item.Name || 'Unknown Title',
           });
 
-          if (document.getElementById('episodeSection').style.display !== 'none') {
+          // The section is hidden by CSS, so its inline style starts empty;
+          // only showEpisodeSelection() sets it to 'block'. Checking for
+          // !== 'none' would treat a never-opened picker as open and bring
+          // the main list back over the album tracks.
+          if (document.getElementById('episodeSection').style.display === 'block') {
             this.hideEpisodeSelection();
           }
         } else {

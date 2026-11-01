@@ -419,12 +419,15 @@ function createMediaActionsManager({
   }
 
   function subtitleExtensionForCodec(codec) {
-    if (codec === 'subrip') return 'srt';
-    if (codec === 'webvtt' || codec === 'vtt') return 'vtt';
-    if (codec === 'ass') return 'ass';
-    if (codec === 'ssa') return 'ssa';
-    if (codec && codec.toLowerCase().includes('srt')) return 'srt';
-    if (codec && codec.toLowerCase().includes('vtt')) return 'vtt';
+    // Compared in lowercase: the extension tells mpv how to parse the file,
+    // so an uppercase "ASS" saved as .srt would lose all its styling.
+    const name = String(codec || '').toLowerCase();
+    if (name === 'subrip') return 'srt';
+    if (name === 'webvtt' || name === 'vtt') return 'vtt';
+    if (name === 'ass') return 'ass';
+    if (name === 'ssa') return 'ssa';
+    if (name.includes('srt')) return 'srt';
+    if (name.includes('vtt')) return 'vtt';
     return 'srt';
   }
 

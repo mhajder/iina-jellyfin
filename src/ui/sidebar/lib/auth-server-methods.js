@@ -1,4 +1,15 @@
 window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(debugLog) {
+  // The sidebar's HTTP client resolves for every HTTP status and throws only
+  // when the request never got an answer, always with status 0. The browser's
+  // own message for that ("Load failed" in IINA's WebKit, "Failed to fetch"
+  // elsewhere) means nothing to the user, so name the likely cause instead.
+  function describeAuthError(error) {
+    if (error && error.status === 0) {
+      return 'Network error - check server URL and connectivity';
+    }
+    return `Authentication failed: ${(error && error.message) || 'Unknown error'}`;
+  }
+
   return {
     handleClientIdentity(identity) {
       if (!identity || !identity.deviceId) {
@@ -633,8 +644,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
 
       let attempts = 0;
       const maxAttempts = 60;
+      let pollInFlight = false;
 
-      this.qcPollingInterval = setInterval(async () => {
+      const pollingInterval = setInterval(async () => {
         attempts++;
         if (attempts > maxAttempts) {
           this.cancelQuickConnect();
@@ -642,6 +654,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             'Quick Connect timed out. Please try again.';
           return;
         }
+
+        // A check slower than the interval must not overlap the next one:
+        // both could see the approval and sign in twice. Skipped ticks still
+        // count above, so the timeout stays at five minutes.
+        if (pollInFlight) return;
+        pollInFlight = true;
 
         try {
           const httpClient = this.getHttpClient();
@@ -653,6 +671,10 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             status: response.status,
             authenticated: response?.data?.Authenticated,
           });
+
+          // Cancelled or restarted while this check was in flight: its answer
+          // belongs to an old code, and acting on it would stop the new poll.
+          if (this.qcPollingInterval !== pollingInterval) return;
 
           if (response.data && response.data.Authenticated === true) {
             debugLog('Quick Connect approved! Authenticating...');
@@ -666,8 +688,11 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           }
         } catch (error) {
           debugLog('Quick Connect poll error: ' + error.message);
+        } finally {
+          pollInFlight = false;
         }
       }, 5000);
+      this.qcPollingInterval = pollingInterval;
     },
 
     async authenticateWithQuickConnect() {
@@ -763,8 +788,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       } catch (error) {
         if (isCancelled()) return;
         debugLog('Quick Connect auth error: ' + error.message);
-        document.getElementById('qcError').textContent =
-          'Authentication failed: ' + (error.message || 'Unknown error');
+        document.getElementById('qcError').textContent = describeAuthError(error);
         this.resetQuickConnectUI();
       }
     },
@@ -995,6 +1019,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             error: 'Access forbidden - check user permissions',
           };
         }
+        if (response.status === 404) {
+          return {
+            success: false,
+            error: 'Authentication endpoint not found - check server URL',
+          };
+        }
         return {
           success: false,
           error: `Authentication failed with status ${response.status}`,
@@ -1005,33 +1035,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         debugLog('Auth error status:', error.status);
         debugLog('Auth error statusText:', error.statusText);
 
-        if (error.status === 401) {
-          return {
-            success: false,
-            error: 'Invalid username or password',
-          };
-        }
-        if (error.status === 403) {
-          return {
-            success: false,
-            error: 'Access forbidden - check user permissions',
-          };
-        }
-        if (error.status === 404) {
-          return {
-            success: false,
-            error: 'Authentication endpoint not found - check server URL',
-          };
-        }
-        if (error.message && error.message.includes('Network')) {
-          return {
-            success: false,
-            error: 'Network error - check server URL and connectivity',
-          };
-        }
         return {
           success: false,
-          error: `Authentication failed: ${error.message || 'Unknown error'}`,
+          error: describeAuthError(error),
         };
       }
     },

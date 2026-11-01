@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadCommonJs } from './helpers/load-commonjs.js';
+import { loadCommonJs, runScript } from './helpers/load-commonjs.js';
 
 function loadMediaActions(deps = {}, globals = {}) {
   const context = vm.createContext({
@@ -11,7 +10,7 @@ function loadMediaActions(deps = {}, globals = {}) {
     clearTimeout,
     ...globals,
   });
-  vm.runInContext(readFileSync('src/lib/media-actions.js', 'utf8'), context);
+  runScript('src/lib/media-actions.js', context);
 
   const calls = { mpvCommand: [], mpvSet: [], title: '', titleSetLocally: false };
   const prefs = { set_video_title: true, preferred_languages: 'en' };

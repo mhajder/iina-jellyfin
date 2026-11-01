@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { runScript } from './helpers/load-commonjs.js';
 
 // Load sidebar.js as the webview would, with an `iina` bridge that has no
 // preferences API, and return the registered message handlers.
@@ -22,7 +23,7 @@ function loadSidebar() {
       postMessage() {},
     },
   });
-  vm.runInContext(readFileSync('src/ui/sidebar/sidebar.js', 'utf8'), context);
+  runScript('src/ui/sidebar/sidebar.js', context);
   context.window.JellyfinSidebar.prototype.setupMessageHandlers.call({
     handleClientIdentity() {},
   });

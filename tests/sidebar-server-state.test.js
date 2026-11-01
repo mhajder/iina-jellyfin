@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadCommonJs } from './helpers/load-commonjs.js';
+import { loadCommonJs, runScript } from './helpers/load-commonjs.js';
 
 function createClient(globals = {}) {
   const context = vm.createContext({ window: {}, ...globals });
-  vm.runInContext(readFileSync('src/ui/sidebar/lib/auth-server-methods.js', 'utf8'), context);
+  runScript('src/ui/sidebar/lib/auth-server-methods.js', context);
   const methods = context.window.createSidebarAuthServerMethods(() => {});
   return {
     ...methods,
