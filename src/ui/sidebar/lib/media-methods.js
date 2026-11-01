@@ -20,7 +20,21 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
       return true;
     },
 
+    /**
+     * Move every ticket on so no reply to a request already in flight is
+     * rendered. Requests started afterwards take fresh tickets.
+     */
+    invalidatePendingRequests() {
+      if (!this.requestIds) return;
+      for (const key of Object.keys(this.requestIds)) {
+        this.requestIds[key]++;
+      }
+    },
+
     showMainContent() {
+      // Called once a login or server switch succeeds: anything still in
+      // flight was asked of the previous server or session.
+      this.invalidatePendingRequests();
       document.getElementById('mainContent').style.display = 'block';
       this.scrollToTop();
       this.loadGenres();
@@ -29,6 +43,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
     async loadGenres() {
       if (!this.currentServer || !this.currentUser) return;
+      const requestId = this.nextRequestId('genres');
 
       try {
         const params = new URLSearchParams({
@@ -44,6 +59,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
+
+        if (!this.isLatestRequest('genres', requestId)) return;
 
         if (response.data && response.data.Items) {
           const moviesGenreSelect = document.getElementById('moviesGenreSelect');
@@ -79,6 +96,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
      * stale content from a previous server being visible on reconnect.
      */
     clearAllMediaContent() {
+      // Requests still in flight belong to the previous server or session:
+      // none of their replies may be rendered.
+      this.invalidatePendingRequests();
+
       // Reset selection state
       this.selectedItem = null;
       this.selectedSeason = null;
@@ -682,6 +703,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         name: item?.Name,
       });
       this.selectedItem = item;
+      // A search result still being looked up must not replace this choice.
+      this.nextRequestId('searchItem');
 
       document.querySelectorAll('.media-item').forEach((el) => el.classList.remove('selected'));
       // The item is not always on screen (e.g. selected from search results)
@@ -703,6 +726,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     },
 
     async selectSearchItem(hint) {
+      // A result chosen before signing out or switching server must not
+      // start playing once its slow reply arrives.
+      const requestId = this.nextRequestId('searchItem');
+
       try {
         const params = new URLSearchParams({
           userId: this.currentUser.Id,
@@ -717,10 +744,13 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           }
         );
 
+        if (!this.isLatestRequest('searchItem', requestId)) return;
+
         if (response.data) {
           this.selectMediaItem(response.data);
         }
       } catch (error) {
+        if (!this.isLatestRequest('searchItem', requestId)) return;
         // The webview has no core API — iina here only exposes postMessage and
         // onMessage — so report failures in the UI, not through an OSD.
         debugLog('Error getting item details:', error);
@@ -1122,6 +1152,7 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
 
     async loadMusicGenres() {
       if (!this.currentServer || !this.currentUser) return;
+      const requestId = this.nextRequestId('musicGenres');
 
       try {
         const params = new URLSearchParams({
@@ -1136,6 +1167,8 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
             Authorization: this.buildAuthorizationHeader(this.currentServer.accessToken),
           },
         });
+
+        if (!this.isLatestRequest('musicGenres', requestId)) return;
 
         if (response.data && response.data.Items) {
           const musicGenreSelect = document.getElementById('musicGenreSelect');

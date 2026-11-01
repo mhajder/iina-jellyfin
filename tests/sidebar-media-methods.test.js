@@ -315,6 +315,88 @@ test('a newer movies request wins over a slower earlier one', async () => {
   assert.equal(document.getElementById('seriesList').children.length, 1);
 });
 
+test('replies still in flight when the media content is cleared are not rendered', async () => {
+  const { client, document, http, posted } = createClient();
+
+  const movies = client.loadMovies();
+  const genres = client.loadGenres();
+  const musicGenres = client.loadMusicGenres();
+  const searchItem = client.selectSearchItem({ ItemId: 'h1', Type: 'Movie', Name: 'Alien' });
+
+  // Signing out or switching server clears the content while those are pending.
+  client.clearAllMediaContent();
+  document.getElementById('moviesGenreSelect').innerHTML = 'cleared';
+  document.getElementById('musicGenreSelect').innerHTML = 'cleared';
+
+  const [moviesRequest, genresRequest, musicGenresRequest, itemRequest] = http.requests;
+  moviesRequest.resolve({ Items: [{ Id: 'old', Name: 'Old', Type: 'Movie' }] });
+  genresRequest.resolve({ Items: [{ Name: 'Old genre' }] });
+  musicGenresRequest.resolve({ Items: [{ Name: 'Old music genre' }] });
+  itemRequest.resolve({ Id: 'h1', Type: 'Movie', Name: 'Alien' });
+  await Promise.all([movies, genres, musicGenres, searchItem]);
+
+  assert.equal(document.getElementById('moviesList').children.length, 0);
+  assert.equal(document.getElementById('moviesGenreSelect').innerHTML, 'cleared');
+  assert.equal(document.getElementById('musicGenreSelect').innerHTML, 'cleared');
+  assert.deepEqual(posted, [], 'a result chosen before signing out does not start playing');
+});
+
+test('a failed search result request after the content is cleared reports nothing', async () => {
+  const { client, document, http } = createClient();
+
+  const searchItem = client.selectSearchItem({ ItemId: 'h1', Type: 'Movie', Name: 'Alien' });
+  client.clearAllMediaContent();
+  http.requests[0].reject(new Error('offline'));
+  await searchItem;
+
+  assert.equal(document.getElementById('searchResults').innerHTML, '');
+});
+
+test('a newer genre request wins over a slower earlier one', async () => {
+  const { client, document, http } = createClient();
+
+  const first = client.loadGenres();
+  const second = client.loadGenres();
+  http.requests[1].resolve({ Items: [{ Name: 'New' }] });
+  await second;
+  http.requests[0].resolve({ Items: [{ Name: 'Old' }] });
+  await first;
+
+  const options = document.getElementById('moviesGenreSelect').innerHTML;
+  assert.ok(options.includes('New'));
+  assert.ok(!options.includes('Old'));
+});
+
+test('a server switch drops replies still in flight but loads the new genres', async () => {
+  const { client, document, http } = createClient();
+
+  const movies = client.loadMovies();
+  // A login or server switch succeeds while the movies are still loading.
+  client.showMainContent();
+  const [moviesRequest, genresRequest, musicGenresRequest] = http.requests;
+  genresRequest.resolve({ Items: [{ Name: 'New server genre' }] });
+  musicGenresRequest.resolve({ Items: [] });
+  moviesRequest.resolve({ Items: [{ Id: 'old', Name: 'Old server movie', Type: 'Movie' }] });
+  await movies;
+  await flush();
+
+  assert.equal(document.getElementById('moviesList').children.length, 0);
+  assert.ok(document.getElementById('moviesGenreSelect').innerHTML.includes('New server genre'));
+});
+
+test('choosing a list item cancels a search result still being looked up', async () => {
+  const { client, posted, http } = createClient();
+
+  const searchItem = client.selectSearchItem({ ItemId: 'h1', Type: 'Movie', Name: 'Alien' });
+  client.selectMediaItem({ Id: 'm2', Type: 'Movie', Name: 'Ronin' });
+  http.requests[0].resolve({ Id: 'h1', Type: 'Movie', Name: 'Alien' });
+  await searchItem;
+
+  assert.deepEqual(posted, [
+    { name: 'play-media', data: { streamUrl: streamUrl('Videos', 'm2'), title: 'Ronin' } },
+  ]);
+});
+
 test('nothing is requested while signed out', async () => {
   const { client, document, http } = createClient();
   client.currentUser = null;
