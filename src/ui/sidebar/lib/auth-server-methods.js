@@ -1,4 +1,15 @@
 window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(debugLog) {
+  // The sidebar's HTTP client resolves for every HTTP status and throws only
+  // when the request never got an answer, always with status 0. The browser's
+  // own message for that ("Load failed" in IINA's WebKit, "Failed to fetch"
+  // elsewhere) means nothing to the user, so name the likely cause instead.
+  function describeAuthError(error) {
+    if (error && error.status === 0) {
+      return 'Network error - check server URL and connectivity';
+    }
+    return `Authentication failed: ${(error && error.message) || 'Unknown error'}`;
+  }
+
   return {
     handleClientIdentity(identity) {
       if (!identity || !identity.deviceId) {
@@ -763,8 +774,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       } catch (error) {
         if (isCancelled()) return;
         debugLog('Quick Connect auth error: ' + error.message);
-        document.getElementById('qcError').textContent =
-          'Authentication failed: ' + (error.message || 'Unknown error');
+        document.getElementById('qcError').textContent = describeAuthError(error);
         this.resetQuickConnectUI();
       }
     },
@@ -995,6 +1005,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             error: 'Access forbidden - check user permissions',
           };
         }
+        if (response.status === 404) {
+          return {
+            success: false,
+            error: 'Authentication endpoint not found - check server URL',
+          };
+        }
         return {
           success: false,
           error: `Authentication failed with status ${response.status}`,
@@ -1005,33 +1021,9 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         debugLog('Auth error status:', error.status);
         debugLog('Auth error statusText:', error.statusText);
 
-        if (error.status === 401) {
-          return {
-            success: false,
-            error: 'Invalid username or password',
-          };
-        }
-        if (error.status === 403) {
-          return {
-            success: false,
-            error: 'Access forbidden - check user permissions',
-          };
-        }
-        if (error.status === 404) {
-          return {
-            success: false,
-            error: 'Authentication endpoint not found - check server URL',
-          };
-        }
-        if (error.message && error.message.includes('Network')) {
-          return {
-            success: false,
-            error: 'Network error - check server URL and connectivity',
-          };
-        }
         return {
           success: false,
-          error: `Authentication failed: ${error.message || 'Unknown error'}`,
+          error: describeAuthError(error),
         };
       }
     },

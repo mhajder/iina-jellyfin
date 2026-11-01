@@ -321,6 +321,11 @@ test('password login reports a malformed server URL', async () => {
 for (const [description, response, message] of [
   ['wrong credentials', { status: 401, data: '' }, 'Invalid username or password'],
   ['a forbidden user', { status: 403, data: '' }, 'Access forbidden - check user permissions'],
+  [
+    'a missing login endpoint',
+    { status: 404, data: '' },
+    'Authentication endpoint not found - check server URL',
+  ],
   ['a server error', { status: 500, data: '' }, 'Authentication failed with status 500'],
   [
     'an error from the server',
@@ -343,6 +348,26 @@ for (const [description, response, message] of [
     assert.equal(dom.get('loginSection').style.display, 'block');
     assert.equal(dom.get('loginBtn').disabled, false);
     assert.equal(dom.get('loginBtn').textContent, 'Login');
+  });
+}
+
+// IINA's WebKit reports an unreachable server as "Load failed", Chromium as
+// "Failed to fetch": neither contains "Network", so the status must decide.
+for (const browserMessage of ['Load failed', 'Failed to fetch']) {
+  test(`password login names a network error when fetch fails with "${browserMessage}"`, async () => {
+    const { sidebar, dom } = createSidebar({
+      respond() {
+        throw networkError(browserMessage);
+      },
+    });
+    fillLogin(dom, {});
+
+    await sidebar.login();
+
+    assert.equal(
+      dom.get('loginError').textContent,
+      'Network error - check server URL and connectivity'
+    );
   });
 }
 
@@ -551,7 +576,7 @@ test('Quick Connect reports a failed authentication request', async () => {
 
   await intervals.tick();
 
-  assert.equal(dom.get('qcError').textContent, 'Authentication failed: Load failed');
+  assert.equal(dom.get('qcError').textContent, 'Network error - check server URL and connectivity');
   assert.equal(sidebar.currentServer, null);
   assert.equal(dom.get('qcStartBtn').style.display, 'block');
 });
