@@ -2,7 +2,7 @@
 
 const CLIENT_NAME = 'IINA Jellyfin Plugin';
 const DEVICE_NAME = 'IINA';
-const CLIENT_VERSION = '0.8.0'; // x-release-please-version
+const CLIENT_VERSION = '0.9.0'; // x-release-please-version
 
 const API_KEY_PARAM = /[?&](?:api_key|apikey|api-key|x-emby-token)=/i;
 const ITEM_ROUTE_ANY_CASE =
