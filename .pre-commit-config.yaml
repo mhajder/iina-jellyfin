@@ -55,6 +55,12 @@ repos:
         types: [javascript]
         pass_filenames: false
 
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.51.1
+    hooks:
+      - id: typos
+        args: [--hidden, --no-ignore, --force-exclude]
+
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.19.3
     hooks:
