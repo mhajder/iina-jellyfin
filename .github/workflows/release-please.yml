@@ -116,8 +116,9 @@ jobs:
           name: iina-plugin
 
       - name: Update Release with Assets
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: ${{ needs.build-plugin.outputs.asset_name }}
-          append_body: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          ASSET: ${{ needs.build-plugin.outputs.asset_name }}
+        run: gh release upload "$TAG" "$ASSET" --clobber
