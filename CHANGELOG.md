@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.1](https://github.com/mhajder/iina-jellyfin/compare/v0.9.0...v0.9.1) (2026-11-15)
+
+
+### 🐛 Bug Fixes
+
+* **autoplay:** keep the viewer's playlist and queue episodes in airing order ([69d1516](https://github.com/mhajder/iina-jellyfin/commit/69d15166691be211e1a4d36182563d37d04a9527))
+* encode API keys in request URLs and keep subpaths with media routes ([60978ec](https://github.com/mhajder/iina-jellyfin/commit/60978ecf12c5d19f7154d97abed508095582ca0c))
+* keep stored servers in step across browser views and played links ([4b6e8cf](https://github.com/mhajder/iina-jellyfin/commit/4b6e8cf2c7a76fde55dd7560fb027c0291cad704))
+* keep the standalone browser's size and position when reopened ([63b6155](https://github.com/mhajder/iina-jellyfin/commit/63b61557f131ffa16274918e4e0f6d0019a4f7db))
+* match subtitle languages across all of ISO 639-1 ([474a833](https://github.com/mhajder/iina-jellyfin/commit/474a833084c33528e4ba7a388c93bcf041d381f2))
+* resume re-watched items and keep tracking after a seek back from the end ([0521607](https://github.com/mhajder/iina-jellyfin/commit/0521607a42b4ed9f32a863e425c2e44f860effc3))
+* **sidebar:** hide series that have no episodes ([f16cb40](https://github.com/mhajder/iina-jellyfin/commit/f16cb4081bdf59c0cf2aa0d08c4c48335ac518b4))
+* **sidebar:** page long lists and show episodes and links correctly ([6829dec](https://github.com/mhajder/iina-jellyfin/commit/6829dec7031bf159068d459df23577061523a981))
+* **sidebar:** sign in, disconnect and switch servers without losing the wrong one ([f409baf](https://github.com/mhajder/iina-jellyfin/commit/f409baf60a21b28776f9dd6564195503533722a3))
+* stop applying a previous item's subtitles and title to other files ([86625df](https://github.com/mhajder/iina-jellyfin/commit/86625df88c15526adf28c182c0ecbd20af4bd500))
+
+
+### 🧩 CI
+
+* set Dependabot commit messages and group its updates ([c1da04f](https://github.com/mhajder/iina-jellyfin/commit/c1da04f5647f877e0f54f56c1b41233b34812ec6))
+
 ## [0.9.0](https://github.com/mhajder/iina-jellyfin/compare/v0.8.0...v0.9.0) (2026-11-07)
 
 
