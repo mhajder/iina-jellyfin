@@ -60,7 +60,10 @@ function createView() {
     close() {
       this.closed++;
     },
-    setFrame() {},
+    frames: [],
+    setFrame(...args) {
+      this.frames.push(args);
+    },
     setProperty() {},
   };
 }
@@ -323,6 +326,18 @@ test('without a visible player window the browser opens in a standalone window w
   );
   assert.equal(posted[1].data.activeServerId, 'srv-1');
   assert.equal(posted[2].data.accessToken, 'accounttoken');
+});
+
+test('the standalone window keeps the size and place the user gave it when reopened', () => {
+  const plugin = loadPlugin({ window: { loaded: true, visible: false } });
+  const showBrowser = plugin.findMenuItem('Show Jellyfin Browser').action;
+
+  showBrowser();
+  plugin.standaloneWindow.close();
+  showBrowser();
+
+  assert.equal(plugin.standaloneWindow.opened, 2);
+  assert.deepEqual(plugin.standaloneWindow.frames, [[400, 600, 100, 100]]);
 });
 
 test('the standalone window asks to log in when no server is stored', () => {

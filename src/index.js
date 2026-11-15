@@ -420,6 +420,10 @@ function showJellyfinBrowser() {
   openJellyfinStandaloneWindow(sessionData);
 }
 
+// Whether the standalone window got its initial size and position. IINA
+// creates that window once per plugin instance, like this flag.
+let standaloneFrameSet = false;
+
 /**
  * Open Jellyfin browser in a standalone window
  */
@@ -432,7 +436,13 @@ function openJellyfinStandaloneWindow(sessionData) {
 
     // Set window properties. setFrame takes four numbers (width, height, x, y)
     // and setProperty a single object; anything else is silently ignored.
-    standaloneWindow.setFrame(400, 600, 100, 100);
+    // IINA keeps this window when it is closed (only hidden), so the frame is
+    // set on the first open only: a window the user moved or resized opens
+    // again where they left it instead of snapping back.
+    if (!standaloneFrameSet) {
+      standaloneWindow.setFrame(400, 600, 100, 100);
+      standaloneFrameSet = true;
+    }
     standaloneWindow.setProperty({ title: 'Jellyfin Browser', resizable: true });
 
     // Set up message handlers for standalone window.
