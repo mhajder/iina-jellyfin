@@ -1,10 +1,17 @@
 [default.extend-words]
-# ISO 639-2 language codes
+# ISO 639 language codes
+als = "als"
+ba = "ba"
+bre = "bre"
+fo = "fo"
 fre = "fre"
+ful = "ful"
+nd = "nd"
 sme = "sme"
 som = "som"
 tha = "tha"
 wel = "wel"
+yor = "yor"
 # `dialog(ue)?` regex
 ue = "ue"
 # media seek term (HTML5 `seeked` event)
