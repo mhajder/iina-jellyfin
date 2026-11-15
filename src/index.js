@@ -2,6 +2,8 @@
  * IINA Jellyfin Plugin
  */
 
+'use strict';
+
 const { createDebugLogger } = require('./lib/debug-log.js');
 const { createJellyfinApi, isSameJellyfinServer } = require('./lib/jellyfin-api.js');
 const { createServerSessionStore } = require('./lib/server-session-store.js');

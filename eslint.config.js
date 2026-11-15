@@ -1,116 +1,63 @@
 import js from '@eslint/js';
 
+const timers = {
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+};
+
+const sharedRules = {
+  'no-useless-escape': 'off',
+  'no-console': 'off', // IINA plugins use console.log for debugging
+  'prefer-const': 'error',
+  'no-var': 'error',
+  eqeqeq: ['error', 'always'],
+  curly: ['error', 'multi-line'],
+  'no-eval': 'error',
+  'no-implied-eval': 'error',
+  'no-shadow': 'error',
+};
+
 export default [
   js.configs.recommended,
   {
-    // Main plugin files
-    files: ['src/index.js', 'src/global.js'],
+    files: ['src/**/*.js'],
+    languageOptions: { ecmaVersion: 2020 },
+    rules: sharedRules,
+  },
+  {
+    // Main plugin entries and runtime library (CommonJS, run by IINA's JavaScriptCore)
+    files: ['src/index.js', 'src/global.js', 'src/lib/**/*.js'],
     languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'module',
+      sourceType: 'commonjs',
       globals: {
-        console: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        global: 'readonly',
-        require: 'readonly',
-        module: 'readonly',
-        exports: 'readonly',
         iina: 'readonly', // IINA plugin global
-        setTimeout: 'readonly', // Available in IINA plugin context
-        clearTimeout: 'readonly', // Available in IINA plugin context
+        ...timers, // Available in IINA plugin context
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^lastItemId$' }],
-      'no-useless-escape': 'off',
-      'no-console': 'off', // IINA plugins use console.log for debugging
-      'prefer-const': 'error',
-      'no-var': 'error',
-      eqeqeq: ['error', 'always'],
-      curly: ['error', 'multi-line'],
-      'no-eval': 'error',
-      'no-implied-eval': 'error',
       strict: ['error', 'global'],
-      'no-shadow': 'error',
-      'no-redeclare': 'error',
       'no-duplicate-imports': 'error',
     },
   },
   {
-    // Main plugin runtime library files (CommonJS)
-    files: ['src/lib/**/*.js'],
-    languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'script',
-      globals: {
-        console: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        global: 'readonly',
-        require: 'readonly',
-        module: 'readonly',
-        exports: 'readonly',
-        iina: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-      },
-    },
-    rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^lastItemId$' }],
-      'no-useless-escape': 'off',
-      'no-console': 'off',
-      'prefer-const': 'error',
-      'no-var': 'error',
-      eqeqeq: ['error', 'always'],
-      curly: ['error', 'multi-line'],
-      'no-eval': 'error',
-      'no-implied-eval': 'error',
-      strict: ['error', 'global'],
-      'no-shadow': 'error',
-      'no-redeclare': 'error',
-    },
-  },
-  {
-    // UI/sidebar files
+    // UI/sidebar files (browser environment)
     files: ['src/ui/**/*.js'],
     languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'script', // Browser environment
+      sourceType: 'script',
       globals: {
+        iina: 'readonly', // IINA plugin global available in UI
         console: 'readonly',
         window: 'readonly',
         document: 'readonly',
-        http: 'readonly', // Global HTTP client (like main plugin)
-        fetch: 'readonly', // Browser fetch API
-        btoa: 'readonly',
-        atob: 'readonly',
+        fetch: 'readonly',
         URLSearchParams: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        iina: 'readonly', // IINA plugin global available in UI
+        ...timers,
       },
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
-      'no-useless-escape': 'off',
-      'no-console': 'off',
-      'prefer-const': 'error',
-      'no-var': 'error',
-      eqeqeq: ['error', 'always'],
-      curly: ['error', 'multi-line'],
-      'no-eval': 'error',
-      'no-implied-eval': 'error',
-      'no-shadow': 'error',
-      'no-redeclare': 'error',
     },
   },
 ];

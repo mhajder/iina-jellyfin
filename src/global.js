@@ -3,6 +3,8 @@
  * Handles creating new player instances for separate windows
  */
 
+'use strict';
+
 const { createDebugLogger } = require('./lib/debug-log.js');
 
 const { global, console, preferences } = iina;
