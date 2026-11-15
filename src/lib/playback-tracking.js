@@ -95,14 +95,11 @@ function createPlaybackTrackingManager({
       }
 
       const playbackPositionTicks = metadata.UserData.PlaybackPositionTicks;
-      const played = metadata.UserData.Played;
 
-      // 0 is a known position; null below means the server's is unknown.
-      if (played) {
-        log('Item already marked as played, not resuming');
-        return 0;
-      }
-
+      // A finished item has its position reset to 0 by Jellyfin, so a played
+      // item with a position is being watched again and resumes like any
+      // other, as in Jellyfin's own clients. 0 is a known position; null
+      // below means the server's is unknown.
       if (!playbackPositionTicks || playbackPositionTicks === 0) {
         log('No resume position available');
         return 0;
@@ -147,7 +144,8 @@ function createPlaybackTrackingManager({
 
       setTimeout(() => {
         try {
-          if (currentPlaybackSession !== session) {
+          // After the file ended, the player already shows the next one.
+          if (currentPlaybackSession !== session || trackedFileEnded) {
             log(`Playback session changed before resume seek for ${itemId}, not seeking`);
             return;
           }
@@ -176,7 +174,7 @@ function createPlaybackTrackingManager({
         return false;
       }
 
-      const url = `${serverBase}/Sessions/Playing?ApiKey=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing?ApiKey=${encodeURIComponent(apiKey)}`;
       log(`Reporting playback start for item: ${itemId}`);
 
       const response = await http.post(url, {
@@ -224,7 +222,7 @@ function createPlaybackTrackingManager({
       }
 
       const positionTicks = secondsToTicks(positionSeconds);
-      const url = `${serverBase}/Sessions/Playing/Progress?ApiKey=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing/Progress?ApiKey=${encodeURIComponent(apiKey)}`;
 
       const response = await http.post(url, {
         headers: buildJellyfinHeaders(apiKey, {
@@ -272,7 +270,7 @@ function createPlaybackTrackingManager({
       }
 
       const positionTicks = secondsToTicks(positionSeconds);
-      const url = `${serverBase}/Sessions/Playing/Stopped?ApiKey=${apiKey}`;
+      const url = `${serverBase}/Sessions/Playing/Stopped?ApiKey=${encodeURIComponent(apiKey)}`;
 
       log(`Reporting playback stop: position=${positionSeconds}s (${positionTicks} ticks)`);
 
@@ -312,7 +310,7 @@ function createPlaybackTrackingManager({
         return false;
       }
 
-      const url = `${serverBase}/UserPlayedItems/${itemId}?ApiKey=${apiKey}`;
+      const url = `${serverBase}/UserPlayedItems/${itemId}?ApiKey=${encodeURIComponent(apiKey)}`;
       log(`Marking item as watched: ${itemId}`);
 
       const response = await http.post(url, {
@@ -351,13 +349,19 @@ function createPlaybackTrackingManager({
    *   plays (and so reports) its first media source.
    * - startPosition: where a version switch reopened the item. It stands in
    *   for the resume point, and there is no resume seek, as the file already
-   *   started there.
+   *   started there. Also used when tracking resumes after a seek back from
+   *   the end.
+   * - alreadyWatched: the item was marked watched in this playback already.
    */
   async function startPlaybackTracking(
     serverBase,
     itemId,
     apiKey,
-    { mediaSourceId: requestedMediaSourceId = null, startPosition = null } = {}
+    {
+      mediaSourceId: requestedMediaSourceId = null,
+      startPosition = null,
+      alreadyWatched = false,
+    } = {}
   ) {
     stopPlaybackTracking();
 
@@ -402,14 +406,14 @@ function createPlaybackTrackingManager({
       startTime: Date.now(),
       resumePosition: startPosition,
       duration: null,
-      hasReportedWatched: false,
+      hasReportedWatched: alreadyWatched,
     };
 
     reportPlaybackStart(serverBase, itemId, apiKey, playSessionId, mediaSourceId);
     if (startPosition === null) {
       resumeFromJellyfin(serverBase, itemId, apiKey);
     } else {
-      log(`Version switch started at ${startPosition}s, not seeking to the resume point`);
+      log(`Playback already at ${startPosition}s, not seeking to the resume point`);
     }
 
     try {
@@ -494,13 +498,16 @@ function createPlaybackTrackingManager({
             // so the watched state has to be sent from here. The progress
             // threshold above only runs every PROGRESS_REPORT_TICKS ticks and
             // can be missed entirely on short files or after a seek to the end.
-            if (!currentPlaybackSession.hasReportedWatched) {
-              const finished = currentPlaybackSession;
+            const finished = currentPlaybackSession;
+            if (!finished.hasReportedWatched) {
               finished.hasReportedWatched = true;
               markAsWatched(finished.serverBase, finished.itemId, finished.apiKey);
             }
 
             stopPlaybackTracking();
+            // The file can stay open at its end, and the viewer may only have
+            // scrubbed there: a seek back starts tracking again.
+            watchForSeekBack(finished, duration);
           }
         }
       } catch (error) {
@@ -560,16 +567,63 @@ function createPlaybackTrackingManager({
    * file's.
    */
   function markTrackedFileEnded() {
+    // The file is gone: neither a start still waiting on its playback info
+    // nor a seek-back watch may install a session for it, which would then
+    // report the next file's position as this item's.
+    sessionRequestCounter++;
+    cancelSeekBackWatch();
     if (!currentPlaybackSession) return;
 
     trackedFileEnded = true;
     stopPlaybackTick();
   }
 
+  // How far before the end a seek must land to count as watching again,
+  // rather than the end-of-file jitter that ended the session.
+  const SEEK_BACK_MARGIN = 2;
+  let seekBackTimer = null;
+
+  function cancelSeekBackWatch() {
+    if (seekBackTimer) {
+      clearInterval(seekBackTimer);
+      seekBackTimer = null;
+    }
+  }
+
+  /**
+   * After the end was reached the session is closed, but the file is still
+   * the one playing until mpv ends it (which cancels this watch). If the
+   * viewer seeks back, track the rest as a new session from there.
+   */
+  function watchForSeekBack(finished, duration) {
+    cancelSeekBackWatch();
+    const { serverBase, itemId, apiKey, mediaSourceId } = finished;
+    const timer = setInterval(() => {
+      // A tick already queued when the watch was cancelled.
+      if (seekBackTimer !== timer) return;
+      try {
+        const position = core.status.position;
+        if (!(position > 0) || duration - position <= SEEK_BACK_MARGIN) return;
+
+        cancelSeekBackWatch();
+        log(`Seek back to ${position}s after the end, tracking ${itemId} again`);
+        startPlaybackTracking(serverBase, itemId, apiKey, {
+          mediaSourceId,
+          startPosition: position,
+          alreadyWatched: true,
+        });
+      } catch (error) {
+        log(`Error watching for a seek back: ${error.message}`);
+      }
+    }, PLAYBACK_TICK_INTERVAL);
+    seekBackTimer = timer;
+  }
+
   function stopPlaybackTracking() {
     // Invalidate any start that is still waiting on its playback info request,
     // even when there is no session to stop yet.
     sessionRequestCounter++;
+    cancelSeekBackWatch();
 
     if (currentPlaybackSession) {
       stopPlaybackTick();

@@ -175,7 +175,7 @@ test('a resume seek without notifications shows nothing', async () => {
 
 for (const [description, fetchItemMetadata] of [
   ['a position under 15 seconds', resumeAt(10)],
-  ['an item already played', resumeAt(600, { Played: true })],
+  ['a played item without a saved position', resumeAt(0, { Played: true })],
   ['an item without a saved position', resumeAt(0)],
   ['an item without user data', async () => ({ Name: 'Movie' })],
 ]) {
@@ -190,7 +190,19 @@ for (const [description, fetchItemMetadata] of [
   });
 }
 
-test('an item already played reports 0 when stopped without playing', async () => {
+// Jellyfin resets the position of a finished item, so a played item with a
+// position is being watched again, and Jellyfin's own clients resume it.
+test('a played item being watched again resumes at its saved position', async () => {
+  const harness = createTracker({ fetchItemMetadata: resumeAt(600, { Played: true }) });
+
+  await harness.tracker.startPlaybackTracking(SERVER, 'itemA', 'key');
+  await flush();
+  harness.runTimeouts();
+
+  assert.deepEqual(harness.seeks, [600]);
+});
+
+test('a played item being watched again keeps its position when stopped without playing', async () => {
   const harness = createTracker({ fetchItemMetadata: resumeAt(600, { Played: true }) });
 
   await harness.tracker.startPlaybackTracking(SERVER, 'itemA', 'key');
@@ -199,7 +211,70 @@ test('an item already played reports 0 when stopped without playing', async () =
 
   const [stop] = harness.stops();
   assert.equal(stop.data.Failed, false);
-  assert.equal(stop.data.PositionTicks, 0);
+  assert.equal(stop.data.PositionTicks, 600 * TICKS_PER_SECOND);
+});
+
+test('a start still loading when its file ends is never tracked', async () => {
+  const info = deferred();
+  const harness = createTracker({ fetchPlaybackInfo: () => info.promise });
+
+  const starting = harness.tracker.startPlaybackTracking(SERVER, 'itemA', 'key');
+  // Ended with the next file queued: the stop waits for that file to load.
+  harness.tracker.markTrackedFileEnded();
+  info.resolve({ PlaySessionId: 'ps-1' });
+  await starting;
+
+  assert.equal(harness.tracker.getCurrentPlaybackSession(), null);
+  assert.equal(harness.requests.length, 0);
+});
+
+test('seeking back after scrubbing to the end tracks the item again', async () => {
+  const harness = createTracker();
+
+  await harness.tracker.startPlaybackTracking(SERVER, 'itemA', 'key');
+  harness.status.position = 3599.8;
+  harness.tick();
+
+  assert.equal(harness.watched().length, 1);
+  assert.equal(harness.stops().length, 1);
+  assert.equal(harness.tracker.getCurrentPlaybackSession(), null);
+
+  // Still at the end: nothing restarts.
+  harness.tick();
+  assert.equal(harness.tracker.getCurrentPlaybackSession(), null);
+
+  harness.status.position = 1200;
+  harness.tick();
+  await flush();
+
+  const session = harness.tracker.getCurrentPlaybackSession();
+  assert.equal(session.itemId, 'itemA');
+  assert.equal(session.resumePosition, 1200);
+  assert.equal(harness.starts().length, 2);
+  // No resume seek: playback is already where the viewer put it.
+  assert.deepEqual(harness.seeks, []);
+
+  // Reaching the end again does not mark it watched a second time.
+  harness.status.position = 3599.9;
+  harness.tick();
+  assert.equal(harness.watched().length, 1);
+});
+
+test('a file that ends after reaching its end is not tracked again', async () => {
+  const harness = createTracker();
+
+  await harness.tracker.startPlaybackTracking(SERVER, 'itemA', 'key');
+  harness.status.position = 3599.8;
+  harness.tick();
+  harness.tracker.markTrackedFileEnded();
+
+  // The next file's position must not look like a seek back.
+  harness.status.position = 5;
+  harness.tick();
+  await flush();
+
+  assert.equal(harness.tracker.getCurrentPlaybackSession(), null);
+  assert.equal(harness.starts().length, 1);
 });
 
 test('an item replaced while its resume point was loading is not seeked', async () => {
