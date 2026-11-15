@@ -36,7 +36,7 @@ repos:
         entry: pnpm eslint --fix
         require_serial: true
         language: unsupported
-        files: ^src/
+        files: ^(src/|tests/|eslint\.config\.js$)
         types: [javascript]
 
       - id: local-prettier

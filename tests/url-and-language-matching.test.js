@@ -171,14 +171,14 @@ test('scheme, case and trailing slashes do not split one server', () => {
 });
 
 test('an error status from Jellyfin is a failed request, not data', async () => {
-  const api = createJellyfinApi({
+  const failingApi = createJellyfinApi({
     http: { get: async () => ({ statusCode: 500, data: { message: 'Internal error' } }) },
     preferences: { get: () => 'device', set() {}, sync() {} },
     log() {},
   });
 
-  await assert.rejects(api.fetchItemMetadata('https://jf', 'item', 'key'), /status 500/);
-  await assert.rejects(api.fetchPlaybackInfo('https://jf', 'item', 'key'), /status 500/);
+  await assert.rejects(failingApi.fetchItemMetadata('https://jf', 'item', 'key'), /status 500/);
+  await assert.rejects(failingApi.fetchPlaybackInfo('https://jf', 'item', 'key'), /status 500/);
 });
 
 test('the version playing is read from the MediaSourceId parameter', () => {

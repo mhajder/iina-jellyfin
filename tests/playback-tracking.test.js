@@ -33,7 +33,7 @@ function createTracker(overrides = {}, globals = {}) {
     fetchPlaybackInfo: async () => ({ PlaySessionId: 'session' }),
     fetchItemMetadata: async () => null,
     secondsToTicks: (seconds) => Math.round(seconds * 10000000),
-    ticksToSeconds: (ticks) => ticks / 10000000,
+    ticksToSeconds: (value) => value / 10000000,
     log() {},
     ...overrides,
   });

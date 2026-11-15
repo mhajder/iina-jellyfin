@@ -52,7 +52,7 @@ function createTracker(
     fetchPlaybackInfo: async () => ({ PlaySessionId: 'session' }),
     fetchItemMetadata: async () => null,
     secondsToTicks: (seconds) => Math.round(seconds * TICKS_PER_SECOND),
-    ticksToSeconds: (ticks) => ticks / TICKS_PER_SECOND,
+    ticksToSeconds: (value) => value / TICKS_PER_SECOND,
     log: (message) => logs.push(message),
     ...overrides,
   });

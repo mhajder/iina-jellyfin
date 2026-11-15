@@ -959,8 +959,9 @@ function savedServerResponder(validToken = /^token-/) {
       return { status: 401, data: '' };
     }
     const host = new URL(url).hostname[0].toUpperCase();
-    if (url.endsWith('/System/Info'))
+    if (url.endsWith('/System/Info')) {
       return { status: 200, data: { ServerName: `Server ${host}` } };
+    }
     if (url.endsWith('/Users/Me')) return { status: 200, data: { Id: `user-${host}`, Name: host } };
     throw new Error(`unexpected ${method} ${url}`);
   };

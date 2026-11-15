@@ -18,9 +18,9 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' tests/*.test.js",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "lint": "eslint src/",
-    "lint:fix": "eslint --fix src/",
-    "check": "eslint src/ && prettier --check ."
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "check": "eslint . && prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -21,10 +21,10 @@ const sharedRules = {
 
 export default [
   js.configs.recommended,
+  { rules: sharedRules },
   {
     files: ['src/**/*.js'],
     languageOptions: { ecmaVersion: 2020 },
-    rules: sharedRules,
   },
   {
     // Main plugin entries and runtime library (CommonJS, run by IINA's JavaScriptCore)
@@ -58,6 +58,18 @@ export default [
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // Tests (ES modules, run by node --test)
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        setImmediate: 'readonly',
+        ...timers,
+      },
     },
   },
 ];
