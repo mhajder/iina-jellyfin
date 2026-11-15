@@ -59,7 +59,14 @@ class FakeElement {
 
   appendChild(child) {
     this.children.push(child);
+    child.parentNode = this;
     return child;
+  }
+
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+    this.parentNode = null;
   }
 
   addEventListener(type, listener) {
@@ -258,9 +265,7 @@ test('movies are requested with the chosen sort, filter and genre and rendered',
   assert.match(item.innerHTML, /Heat \(1995\)/);
   assert.match(item.innerHTML, /2h 50m/);
   assert.ok(
-    item.innerHTML.includes(
-      `src="${SERVER}/Items/m1/Images/Primary?maxWidth=160&amp;quality=90&amp;ApiKey=${TOKEN}"`
-    )
+    item.innerHTML.includes(`src="${SERVER}/Items/m1/Images/Primary?maxWidth=160&amp;quality=90"`)
   );
 });
 
@@ -512,10 +517,12 @@ test('media item buttons play or open the Jellyfin page without bubbling to the 
   ]);
 });
 
+// Jellyfin serves images without authentication, so their URLs never carry
+// the access token (it would end up in the webview's cache and logs).
 test('thumbnails fall back from episode to series, thumb to primary to backdrop', () => {
   const { client } = createClient();
   const img = (id, kind, width = 160) =>
-    `${SERVER}/Items/${id}/Images/${kind}?maxWidth=${width}&quality=90&ApiKey=${TOKEN}`;
+    `${SERVER}/Items/${id}/Images/${kind}?maxWidth=${width}&quality=90`;
 
   assert.equal(
     client.getThumbnailUrl({ Id: 'e', Type: 'Episode', ImageTags: { Primary: 'p' } }),
@@ -560,6 +567,106 @@ test('runtimes are shown in hours and minutes', () => {
   assert.equal(client.formatRuntime(minutes(45)), '45m');
   assert.equal(client.formatRuntime(minutes(60)), '1h 0m');
   assert.equal(client.formatRuntime(minutes(61)), '1h 1m');
+  // Under a minute: seconds, not "0m"
+  assert.equal(client.formatRuntime(45 * 10000000), '45s');
+  assert.equal(client.formatRuntime(59.9 * 10000000), '59s');
+  assert.equal(client.formatRuntime(1000), '1s');
+});
+
+test('an episode is sent to the player with its series, season and episode in the title', () => {
+  const { client, posted } = createClient();
+
+  client.playMedia({
+    Id: 'e1',
+    Type: 'Episode',
+    Name: 'Pilot',
+    SeriesName: 'Show',
+    ParentIndexNumber: 1,
+    IndexNumber: 2,
+  });
+  client.playMedia({ Id: 'm1', Type: 'Movie', Name: 'Heat', ProductionYear: 1995 });
+  client.playMedia({ Id: 'e2', Type: 'Episode', Name: 'Extra', SeriesName: 'Show' });
+
+  assert.deepEqual(
+    posted.map((message) => message.data.title),
+    ['Show S01E02 - Pilot', 'Heat (1995)', 'Show - Extra']
+  );
+});
+
+test('the access token is encoded in stream URLs', () => {
+  const { client } = createClient();
+  client.currentServer = { url: SERVER, accessToken: 'a&b+c' };
+
+  const url = new URL(client.buildStreamUrl({ Id: 'm1', Type: 'Movie' }));
+
+  assert.equal(url.searchParams.get('ApiKey'), 'a&b+c');
+});
+
+test('Open in Jellyfin uses the route of the server version, with the server id', () => {
+  const { client, posted } = createClient();
+  const item = { Id: 'm1', Name: 'Heat' };
+
+  client.currentServer = { url: SERVER, version: '10.10.7', jellyfinServerId: 'abc' };
+  client.openInJellyfin(item);
+  client.currentServer = { url: SERVER, version: '10.8.13', jellyfinServerId: 'abc' };
+  client.openInJellyfin(item);
+
+  assert.deepEqual(
+    posted.map((message) => message.data.url),
+    [
+      `${SERVER}/web/index.html#/details?id=m1&serverId=abc`,
+      `${SERVER}/web/index.html#!/details?id=m1&serverId=abc`,
+    ]
+  );
+});
+
+test('a long list is paged with a Load more button that appends the next page', async () => {
+  const { client, document, http } = createClient();
+  const movie = (n) => ({ Id: `m${n}`, Name: `Movie ${n}`, Type: 'Movie' });
+  http.reply = (request) => {
+    const start = Number(request.params.get('StartIndex'));
+    const items = start === 0 ? [movie(1), movie(2)] : [movie(3)];
+    return { Items: items, TotalRecordCount: 3 };
+  };
+
+  await client.loadMovies();
+
+  const list = document.getElementById('moviesList');
+  assert.equal(http.requests[0].params.get('Limit'), '50');
+  assert.equal(list.children.length, 3);
+  const more = list.children.at(-1);
+  assert.equal(more.textContent, 'Load more (2 of 3)');
+
+  more.click();
+  await flush();
+
+  assert.equal(http.requests[1].params.get('StartIndex'), '2');
+  assert.deepEqual(
+    list.children.map((el) => el.dataset.itemId),
+    ['m1', 'm2', 'm3']
+  );
+});
+
+test('a page still loading when the filter changes is dropped', async () => {
+  const { client, document, http } = createClient();
+  const movie = (n) => ({ Id: `m${n}`, Name: `Movie ${n}`, Type: 'Movie' });
+  http.reply = () => ({ Items: [movie(1)], TotalRecordCount: 5 });
+  await client.loadMovies();
+  const list = document.getElementById('moviesList');
+
+  http.reply = null;
+  list.children.at(-1).click();
+  // The filter changes before the second page arrives.
+  const reload = client.loadMovies();
+  http.requests[2].resolve({ Items: [movie(9)], TotalRecordCount: 1 });
+  await reload;
+  http.requests[1].resolve({ Items: [movie(2)], TotalRecordCount: 5 });
+  await flush();
+
+  assert.deepEqual(
+    list.children.map((el) => el.dataset.itemId),
+    ['m9']
+  );
 });
 
 test('the home tab loads continue watching, next up and recent items', async () => {

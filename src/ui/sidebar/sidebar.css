@@ -294,6 +294,13 @@ body {
   background: #3a3a3a;
 }
 
+/* Fetches the next page at the end of a long list */
+.load-more-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .login-method-tabs {
   display: flex;
   gap: 0;
