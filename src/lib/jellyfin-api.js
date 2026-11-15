@@ -82,7 +82,9 @@ function createJellyfinApi({ http, preferences, log }) {
       // Everything before the media route is the server, not just the host: a
       // Jellyfin behind a reverse proxy subpath (https://example.com/jellyfin)
       // would otherwise have every later API call sent to the bare domain.
-      const baseMatch = urlParts[0].match(/^(https?:\/\/[^/]+.*?)\/(?:Items|Videos|Audio)\//i);
+      // The last media route is the item's: the subpath itself may contain
+      // one (https://example.com/videos/jellyfin/Videos/{id}/stream).
+      const baseMatch = urlParts[0].match(/^(https?:\/\/[^/]+.*)\/(?:Items|Videos|Audio)\/[^/]+/i);
       const serverBase = baseMatch ? baseMatch[1] : `${protocol}://${host}`;
       const pathname = urlParts[0].slice(serverBase.length);
 
@@ -179,7 +181,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
   async function fetchPlaybackInfo(serverBase, itemId, apiKey) {
     try {
-      const playbackUrl = `${serverBase}/Items/${itemId}/PlaybackInfo?ApiKey=${apiKey}`;
+      const playbackUrl = `${serverBase}/Items/${itemId}/PlaybackInfo?ApiKey=${encodeURIComponent(apiKey)}`;
       log(`Fetching playback info from: ${playbackUrl}`);
 
       const response = await http.get(playbackUrl, {
@@ -214,7 +216,7 @@ function createJellyfinApi({ http, preferences, log }) {
 
   async function fetchItemMetadata(serverBase, itemId, apiKey) {
     try {
-      const metadataUrl = `${serverBase}/Items/${itemId}?ApiKey=${apiKey}`;
+      const metadataUrl = `${serverBase}/Items/${itemId}?ApiKey=${encodeURIComponent(apiKey)}`;
       log(`Fetching item metadata from: ${metadataUrl}`);
 
       const response = await http.get(metadataUrl, {

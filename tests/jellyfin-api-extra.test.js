@@ -192,3 +192,30 @@ test('seconds and Jellyfin ticks convert both ways', () => {
   assert.equal(api.ticksToSeconds(15000000), 1.5);
   assert.equal(api.ticksToSeconds(api.secondsToTicks(2400)), 2400);
 });
+
+test('a reverse-proxy subpath containing a media route stays part of the server', () => {
+  const { api } = createApi();
+
+  const info = api.parseJellyfinUrl(
+    `https://example.com/videos/jellyfin/Videos/${ITEM}/stream?static=true&api_key=k`
+  );
+
+  assert.equal(info.serverBase, 'https://example.com/videos/jellyfin');
+  assert.equal(info.itemId, ITEM);
+});
+
+test('an api key with reserved characters is encoded again in request URLs', async () => {
+  const { api, requests } = createApi({ response: { statusCode: 200, data: { Name: 'x' } } });
+
+  const info = api.parseJellyfinUrl(
+    `https://jf.example/Videos/${ITEM}/stream?api_key=${encodeURIComponent('a&b+c#d')}`
+  );
+  assert.equal(info.apiKey, 'a&b+c#d');
+
+  await api.fetchItemMetadata(info.serverBase, info.itemId, info.apiKey);
+  await api.fetchPlaybackInfo(info.serverBase, info.itemId, info.apiKey);
+
+  for (const { url } of requests) {
+    assert.equal(new URL(url).searchParams.get('ApiKey'), 'a&b+c#d');
+  }
+});
