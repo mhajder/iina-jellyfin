@@ -124,6 +124,25 @@ function createServerSessionStore({
           ? existingUrl
           : normalizedUrl;
 
+      // Every played Jellyfin file stores its link's session again. When that
+      // changes nothing, the preferences are left alone instead of being
+      // rewritten and synced to disk on each file.
+      const existing = existingIndex >= 0 ? servers[existingIndex] : null;
+      if (
+        existing &&
+        existing.serverUrl === serverUrl &&
+        existing.serverName === (serverData.serverName || serverUrl) &&
+        existing.accessToken === serverData.accessToken &&
+        (existing.userId || '') === (serverData.userId || '') &&
+        (existing.username || '') === (serverData.username || '')
+      ) {
+        const activeId = getActiveServerId();
+        if (servers.length === 1 ? activeId !== existing.id : !activeId) {
+          setActiveServerId(existing.id);
+        }
+        return existing;
+      }
+
       const serverEntry = {
         id: existingIndex >= 0 ? servers[existingIndex].id : `srv-${Date.now()}`,
         serverUrl,
@@ -287,6 +306,7 @@ function createServerSessionStore({
     storeJellyfinSession,
     clearJellyfinSession,
     getStoredJellyfinSession,
+    notifyViews,
   };
 }
 

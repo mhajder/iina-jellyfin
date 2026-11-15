@@ -117,6 +117,7 @@ const {
   storeJellyfinSession,
   clearJellyfinSession,
   getStoredJellyfinSession,
+  notifyViews,
 } = createServerSessionStore({
   preferences,
   sidebar,
@@ -226,8 +227,10 @@ function onFileLoaded(fileUrl) {
       } else {
         debugLog('Connected-account mode ON but no logged-in server; falling back to URL api_key');
       }
-    } else if (preferences.get('auto_login_enabled')) {
-      // Default behaviour: remember this URL's session for auto-login.
+    }
+    // Independent of where progress is reported: the two preferences are
+    // separate settings. A server already signed in keeps its account entry.
+    if (preferences.get('auto_login_enabled')) {
       storeJellyfinSession(jellyfinInfo.serverBase, jellyfinInfo.apiKey);
     } else {
       debugLog('Auto-login from Jellyfin URLs disabled, not storing the URL credentials');
@@ -304,7 +307,8 @@ function registerBrowserHandlers(view) {
       });
       if (server) {
         setActiveServerId(server.id);
-        view.postMessage('servers-updated', {
+        // Both browser views list the servers, not just the one signed in from.
+        notifyViews('servers-updated', {
           servers: loadStoredServers(),
           activeServerId: server.id,
         });
@@ -321,9 +325,25 @@ function registerBrowserHandlers(view) {
   });
 
   view.onMessage('remove-server', (data) => {
-    if (data && data.serverId) {
-      // The store notifies both webviews itself
+    if (!data) return;
+    // The store notifies both webviews itself
+    if (data.serverId) {
       removeServer(data.serverId);
+      return;
+    }
+    // A sign-in the view has no stored id for yet. Messages arrive in order,
+    // so its store-session has already been handled and the entry exists.
+    if (data.serverUrl) {
+      const server = loadStoredServers().find(
+        (item) =>
+          isSameJellyfinServer(item.serverUrl, data.serverUrl) &&
+          (item.userId || '') === (data.userId || '')
+      );
+      if (server) {
+        removeServer(server.id);
+      } else {
+        debugLog(`No stored server for ${data.serverUrl} to remove`);
+      }
     }
   });
 

@@ -369,6 +369,48 @@ test('a played Jellyfin URL is remembered as a server for auto-login', () => {
   assert.equal(available.data.accessToken, 'urlkey');
 });
 
+test('playing the same URL again does not rewrite the stored servers', () => {
+  const plugin = loadPlugin({ prefs: { auto_login_enabled: true } });
+  plugin.emit('iina.file-loaded', videoUrl(MOVIE));
+
+  const writes = [];
+  const set = plugin.store.set.bind(plugin.store);
+  plugin.store.set = (key, value) => {
+    writes.push(key);
+    return set(key, value);
+  };
+  plugin.emit('iina.file-loaded', videoUrl(OTHER));
+
+  assert.deepEqual(writes, []);
+  assert.equal(plugin.servers().length, 1);
+});
+
+test('connected-account mode still remembers a played URL for auto-login', () => {
+  const plugin = loadPlugin({
+    prefs: { auto_login_enabled: true, use_connected_account: true },
+  });
+
+  plugin.emit('iina.file-loaded', videoUrl(MOVIE));
+
+  const [server] = plugin.servers();
+  assert.equal(server.serverUrl, SERVER);
+  assert.equal(server.accessToken, 'urlkey');
+});
+
+test('connected-account mode keeps a signed-in server as it is', () => {
+  const plugin = loadPlugin({
+    prefs: {
+      auto_login_enabled: true,
+      use_connected_account: true,
+      ...withServers([signedInServer()]),
+    },
+  });
+
+  plugin.emit('iina.file-loaded', videoUrl(MOVIE));
+
+  assert.deepEqual(plugin.servers(), [signedInServer()]);
+});
+
 test('with auto-login off a played URL leaves its credentials unstored', () => {
   const plugin = loadPlugin();
 
@@ -638,6 +680,45 @@ test('a sign-in from the sidebar becomes the active server', () => {
   assert.equal(updated.name, 'servers-updated');
   assert.equal(updated.data.activeServerId, server.id);
   assert.equal(updated.data.servers.length, 1);
+});
+
+test('a sign-in from one browser view updates the server list in the other', () => {
+  const plugin = loadPlugin();
+  plugin.loadSidebar();
+
+  plugin.sidebar.handlers['store-session']({
+    serverUrl: SERVER,
+    accessToken: 'token',
+    userId: 'user-1',
+    username: 'me',
+  });
+
+  const updated = plugin.standaloneWindow.posted.at(-1);
+  assert.equal(updated.name, 'servers-updated');
+  assert.equal(updated.data.servers.length, 1);
+});
+
+test('a server can be removed by its URL and user before the view knows its id', () => {
+  const other = signedInServer({ id: 'srv-2', serverUrl: 'https://two.example' });
+  const plugin = loadPlugin({ prefs: withServers([other]) });
+  plugin.loadSidebar();
+
+  plugin.sidebar.handlers['store-session']({
+    serverUrl: SERVER,
+    accessToken: 'token',
+    userId: 'user-1',
+    username: 'me',
+  });
+  plugin.sidebar.handlers['remove-server']({ serverUrl: `${SERVER}/`, userId: 'user-1' });
+
+  assert.deepEqual(
+    plugin.servers().map((server) => server.id),
+    ['srv-2']
+  );
+
+  // No matching entry: nothing else is touched.
+  plugin.sidebar.handlers['remove-server']({ serverUrl: SERVER, userId: 'someone-else' });
+  assert.equal(plugin.servers().length, 1);
 });
 
 test('an incomplete sign-in from the sidebar is ignored', () => {
