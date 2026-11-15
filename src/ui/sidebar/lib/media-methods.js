@@ -329,7 +329,9 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           Recursive: true,
           SortBy: sortValue[0],
           SortOrder: sortValue[1],
-          Fields: 'Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags',
+          // The episode count, for series only: it tells which have nothing
+          // to play.
+          Fields: `Overview,UserData,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags${itemType === 'Series' ? ',RecursiveItemCount' : ''}`,
           EnableImageTypes: 'Primary,Backdrop,Thumb',
           StartIndex: startIndex,
           Limit: PAGE_SIZE,
@@ -359,6 +361,10 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
           startIndex,
           button,
           emptyHtml: `<div class="empty-state">No ${section} found</div>`,
+          // A series without a single episode (an empty folder, or only
+          // metadata) has nothing to browse. Only a count the server gives
+          // as 0 hides it; without one the series stays.
+          filter: itemType === 'Series' ? (item) => item.RecursiveItemCount !== 0 : null,
           render: (items, append) => this.renderMediaList(items, container, { append }),
           loadMore: (next, nextButton) => this.loadLibraryPage(section, itemType, next, nextButton),
         });
@@ -383,8 +389,12 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
     /**
      * Show one page of a list. Jellyfin pages large libraries, so when it has
      * more than are shown a "Load more" button fetches the next page.
+     *
+     * filter drops items from the display only: the paging still counts every
+     * item the server sent, or the next page would start in the wrong place.
+     * A page with nothing left to show loads the next one by itself.
      */
-    renderPage(container, response, { startIndex, button, emptyHtml, render, loadMore }) {
+    renderPage(container, response, { startIndex, button, emptyHtml, filter, render, loadMore }) {
       const data = response.data || {};
       const items = Array.isArray(data.Items) ? data.Items : [];
       if (button) button.remove();
@@ -393,24 +403,42 @@ window.createSidebarMediaMethods = function createSidebarMediaMethods(debugLog) 
         if (startIndex === 0) container.innerHTML = emptyHtml;
         return;
       }
-      render(items, startIndex > 0);
+
+      const visible = filter ? items.filter(filter) : items;
+      this.visibleCounts = this.visibleCounts || {};
+      const visibleSoFar =
+        (startIndex === 0 ? 0 : this.visibleCounts[container.id] || 0) + visible.length;
+      this.visibleCounts[container.id] = visibleSoFar;
+
+      if (visible.length > 0) {
+        render(visible, startIndex > 0);
+      } else if (startIndex === 0) {
+        container.innerHTML = '';
+      }
 
       const shown = startIndex + items.length;
       const total = Number(data.TotalRecordCount);
       const hasMore = Number.isFinite(total) ? total > shown : items.length >= PAGE_SIZE;
-      if (!hasMore) return;
+      if (!hasMore) {
+        if (visibleSoFar === 0) container.innerHTML = emptyHtml;
+        return;
+      }
 
       const more = document.createElement('button');
       more.className = 'button secondary load-more-btn';
       more.textContent = Number.isFinite(total) ? `Load more (${shown} of ${total})` : 'Load more';
-      more.addEventListener('click', (event) => {
-        event.stopPropagation();
+      const loadNext = () => {
         if (more.disabled) return;
         more.disabled = true;
         more.textContent = 'Loading...';
         loadMore(shown, more);
+      };
+      more.addEventListener('click', (event) => {
+        event.stopPropagation();
+        loadNext();
       });
       container.appendChild(more);
+      if (visible.length === 0) loadNext();
     },
 
     pageFailed(container, button, errorHtml) {

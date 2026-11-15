@@ -1477,3 +1477,72 @@ test('signing out clears media lists, filters, selection and the active tab', ()
   assert.equal(client.selectedEpisode, null);
   assert.equal(client.albumTracks.length, 0);
 });
+
+const series = (n, episodes) => ({
+  Id: `s${n}`,
+  Name: `Show ${n}`,
+  Type: 'Series',
+  ...(episodes === undefined ? {} : { RecursiveItemCount: episodes }),
+});
+
+test('series without episodes are hidden, and paging still counts them', async () => {
+  const { client, document, http } = createClient();
+  http.reply = (request) =>
+    Number(request.params.get('StartIndex')) === 0
+      ? { Items: [series(1, 3), series(2, 0), series(3)], TotalRecordCount: 4 }
+      : { Items: [series(4, 1)], TotalRecordCount: 4 };
+
+  await client.loadSeries();
+
+  assert.match(http.requests[0].params.get('Fields'), /,RecursiveItemCount$/);
+  const list = document.getElementById('seriesList');
+  // No count from the server: the series stays.
+  assert.deepEqual(
+    list.children.filter((el) => el.dataset.itemId).map((el) => el.dataset.itemId),
+    ['s1', 's3']
+  );
+
+  list.children.at(-1).click();
+  await flush();
+
+  assert.equal(http.requests[1].params.get('StartIndex'), '3');
+  assert.deepEqual(
+    list.children.map((el) => el.dataset.itemId),
+    ['s1', 's3', 's4']
+  );
+});
+
+test('a page of only empty series loads the next page by itself', async () => {
+  const { client, document, http } = createClient();
+  http.reply = (request) =>
+    Number(request.params.get('StartIndex')) === 0
+      ? { Items: [series(1, 0), series(2, 0)], TotalRecordCount: 3 }
+      : { Items: [series(3, 2)], TotalRecordCount: 3 };
+
+  await client.loadSeries();
+  await flush();
+
+  assert.equal(http.requests.length, 2);
+  assert.deepEqual(
+    document.getElementById('seriesList').children.map((el) => el.dataset.itemId),
+    ['s3']
+  );
+});
+
+test('a library of only empty series says none were found', async () => {
+  const { client, document, http } = createClient();
+  http.reply = () => ({ Items: [series(1, 0)], TotalRecordCount: 1 });
+
+  await client.loadSeries();
+
+  assert.match(document.getElementById('seriesList').innerHTML, /No series found/);
+});
+
+test('movies are not asked for an episode count', async () => {
+  const { client, http } = createClient();
+  http.reply = () => ({ Items: [], TotalRecordCount: 0 });
+
+  await client.loadMovies();
+
+  assert.doesNotMatch(http.requests[0].params.get('Fields'), /RecursiveItemCount/);
+});
