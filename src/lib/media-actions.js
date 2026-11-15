@@ -451,7 +451,12 @@ function createMediaActionsManager({
    * which keeps the file's embedded title, the previous item's or the URL.
    */
   async function applyTitleBeforeLoad(url) {
-    if (!preferences.get('set_video_title') || hasPerFileTitle()) return;
+    if (hasPerFileTitle()) return;
+    if (!preferences.get('set_video_title')) {
+      // A title set from the menu still belongs to the previous item.
+      clearPluginTitle();
+      return;
+    }
 
     const jellyfinInfo = isJellyfinUrl(url) ? parseJellyfinUrl(url) : null;
     if (titleForNextItem && jellyfinInfo && titleForNextItem.itemId === jellyfinInfo.itemId) {
@@ -497,10 +502,14 @@ function createMediaActionsManager({
     titleForNextItem = { title, itemId };
   }
 
-  async function setVideoTitleFromMetadata(serverBase, itemId, apiKey) {
+  /**
+   * Options: manual for the menu action, which the viewer asked for, so it
+   * sets the title even with the automatic title turned off.
+   */
+  async function setVideoTitleFromMetadata(serverBase, itemId, apiKey, { manual = false } = {}) {
     const generation = fileGeneration;
     try {
-      if (!preferences.get('set_video_title')) {
+      if (!manual && !preferences.get('set_video_title')) {
         log('Video title setting is disabled in preferences');
         return;
       }
@@ -564,20 +573,23 @@ function createMediaActionsManager({
     try {
       const extension = subtitleExtensionForCodec(codec);
 
-      const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?ApiKey=${apiKey}`;
+      const subtitleUrl = `${serverBase}/Videos/${itemId}/${mediaSourceId || itemId}/Subtitles/${streamIndex}/stream.${extension}?ApiKey=${encodeURIComponent(apiKey)}`;
 
       // Everything lands in one @tmp directory, so the name has to identify the
       // item and the track. Server-side names like "English.srt" repeat across
       // the library and would otherwise overwrite each other.
       const sanitizedItemId = String(itemId).replace(/[^a-zA-Z0-9_-]/g, '_');
-      let suffix;
+      // The file always ends in the extension of the format requested above:
+      // Jellyfin converts to it, and mpv picks its parser by the extension, so
+      // a server-side "Movie.sub" kept as .sub would be read as the wrong format.
+      let stem;
       if (subtitlePath) {
         const pathParts = subtitlePath.split(/[/\\]/);
-        suffix = pathParts[pathParts.length - 1].replace(/[^a-zA-Z0-9._-]/g, '_');
+        stem = pathParts[pathParts.length - 1].replace(/\.[^.]*$/, '');
       } else {
-        const sanitizedLanguage = String(language).replace(/[^a-zA-Z0-9_-]/g, '_');
-        suffix = `${sanitizedLanguage}.${extension}`;
+        stem = String(language);
       }
+      const suffix = `${stem.replace(/[^a-zA-Z0-9._-]/g, '_')}.${extension}`;
 
       const fileName = `jellyfin_${sanitizedItemId}_${streamIndex}_${suffix}`;
       log(`Using filename: ${fileName}`);
@@ -743,6 +755,7 @@ function createMediaActionsManager({
       const shouldDownloadAll = preferences.get('download_all_subtitles');
 
       const loadedPaths = [];
+      let attemptedCount = 0;
 
       for (const stream of subtitleStreams) {
         if (isStale(generation)) {
@@ -763,6 +776,7 @@ function createMediaActionsManager({
         }
 
         log(`Processing external subtitle: ${language} (${codec}) - Index: ${stream.Index}`);
+        attemptedCount++;
 
         try {
           const loadedPath = await downloadExternalSubtitle(
@@ -786,11 +800,21 @@ function createMediaActionsManager({
         selectAfterDownloads(generation, loadedPaths, manual);
       }
 
-      if (downloadedCount > 0 && preferences.get('show_notifications')) {
-        core.osd(`Downloaded ${downloadedCount} subtitle(s)`);
-      } else if (downloadedCount === 0) {
+      if (isStale(generation)) return;
+      const notify = Boolean(preferences.get('show_notifications'));
+      if (downloadedCount > 0) {
+        if (notify) core.osd(`Downloaded ${downloadedCount} subtitle(s)`);
+      } else if (attemptedCount > 0) {
+        log(`None of the ${attemptedCount} external subtitle(s) could be downloaded`);
+        if (notify) core.osd('Failed to download subtitles');
+      } else {
         log('No external subtitles downloaded');
-        if (preferences.get('show_notifications')) {
+        // An automatic download only says so when the file has no subtitles
+        // of its own either; embedded ones already play from the file.
+        const hasEmbedded = mediaStreams.some(
+          (stream) => stream.Type === 'Subtitle' && !stream.IsExternal
+        );
+        if (notify && (manual || !hasEmbedded)) {
           core.osd('No matching external subtitles found');
         }
       }
@@ -898,7 +922,9 @@ function createMediaActionsManager({
 
     log(`Setting title for item: ${jellyfinInfo.itemId}`);
     core.osd('Fetching title...');
-    setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey);
+    setVideoTitleFromMetadata(jellyfinInfo.serverBase, jellyfinInfo.itemId, jellyfinInfo.apiKey, {
+      manual: true,
+    });
   }
 
   function updateFromFileUrl(fileUrl) {
@@ -923,9 +949,10 @@ function createMediaActionsManager({
         log(`Stored Jellyfin media for manual download: ${jellyfinInfo.itemId}`);
         return jellyfinInfo;
       }
+      // Merely looks like Jellyfin (a "/Videos/" path, "jellyfin" in the
+      // host): it is still another file, and the menu actions must not apply
+      // the previous item's subtitles or title to it.
       log('Failed to parse Jellyfin URL');
-      clearPluginTitle();
-      return null;
     }
 
     clearPluginTitle();

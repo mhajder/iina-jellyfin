@@ -308,7 +308,7 @@ test('a failed subtitle download adds no track and the rest still load', async (
   assert.equal(harness.osd.at(-1), 'Downloaded 1 subtitle(s)');
 });
 
-test('when every download fails, no subtitles are reported found', async () => {
+test('when every download fails, the failure is reported, not a missing subtitle', async () => {
   const harness = createManager({
     prefs: { show_notifications: true },
     fetchPlaybackInfo: withStreams(sidecar(1)),
@@ -322,7 +322,88 @@ test('when every download fails, no subtitles are reported found', async () => {
   harness.manager.updateFromFileUrl(STREAM);
   await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K');
 
+  assert.deepEqual(harness.osd, ['Failed to download subtitles']);
+});
+
+const embedded = { Type: 'Subtitle', IsTextSubtitleStream: true, IsExternal: false, Index: 2 };
+
+test('an automatic download is silent when the file has embedded subtitles', async () => {
+  const harness = createManager({
+    prefs: { show_notifications: true },
+    fetchPlaybackInfo: withStreams(embedded),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K');
+
+  assert.deepEqual(harness.osd, []);
+});
+
+test('a file without any subtitles says none were found', async () => {
+  const harness = createManager({
+    prefs: { show_notifications: true },
+    fetchPlaybackInfo: withStreams({ Type: 'Video', Index: 0 }),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K');
+
   assert.deepEqual(harness.osd, ['No matching external subtitles found']);
+});
+
+test('a manual download says none were found even with embedded subtitles', async () => {
+  const harness = createManager({
+    prefs: { show_notifications: true },
+    fetchPlaybackInfo: withStreams(embedded),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K', { manual: true });
+
+  assert.deepEqual(harness.osd, ['No matching external subtitles found']);
+});
+
+test('a subtitle is saved with the extension of the format requested', async () => {
+  const harness = createManager({
+    fetchPlaybackInfo: withStreams(sidecar(1, { Codec: 'microdvd', Path: '/media/Movie.en.sub' })),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  await harness.manager.downloadAllSubtitles('https://jf.example', ITEM, 'K');
+
+  const [download] = harness.downloads;
+  assert.match(download.url, /\/stream\.srt\?/);
+  assert.equal(download.path, `@tmp/jellyfin_${ITEM}_1_Movie.en.srt`);
+});
+
+test('a URL that only looks like Jellyfin forgets the previous item', async () => {
+  const harness = createManager({ status: { url: 'https://cdn.example/Videos/clip.mp4' } });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  harness.manager.updateFromFileUrl('https://cdn.example/Videos/clip.mp4');
+  harness.manager.manualSetTitle();
+  harness.manager.manualDownloadSubtitles();
+  await flush();
+
+  assert.deepEqual(harness.metadataRequests, []);
+  assert.deepEqual(harness.downloads, []);
+});
+
+test('the menu title action works with the automatic title turned off', async () => {
+  const harness = createManager({
+    prefs: { set_video_title: false },
+    fetchItemMetadata: async () => ({ Name: 'Heat', Type: 'Movie', ProductionYear: 1995 }),
+  });
+
+  harness.manager.updateFromFileUrl(STREAM);
+  harness.manager.manualSetTitle();
+  await flush();
+
+  assert.equal(harness.state.title, 'Heat (1995)');
+
+  // The next file does not inherit it, even before it has loaded.
+  await harness.manager.applyTitleBeforeLoad(OTHER_STREAM);
+  assert.equal(harness.state.title, '');
 });
 
 test('playback info that arrives after the next file loaded starts no downloads', async () => {
