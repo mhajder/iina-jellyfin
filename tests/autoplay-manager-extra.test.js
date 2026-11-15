@@ -55,14 +55,27 @@ function createHarness({
         return { data: seasons[seasonId] };
       },
     },
+    // With playlist.entries, the playlist's file names are tracked too.
     mpv: {
       getNumber: (name) => (name === 'playlist-count' ? playlist.count : playlist.pos),
+      getString(name) {
+        const match = /^playlist\/(\d+)\/filename$/.exec(name);
+        if (!match || !playlist.entries) throw new Error(`no ${name}`);
+        return playlist.entries[Number(match[1])];
+      },
       command(name, args) {
         if (name === 'loadfile') {
           loadfiles.push([...args]);
           playlist.count++;
+          if (playlist.entries) playlist.entries.splice(playlist.pos + 1, 0, args[0]);
         }
-        if (name === 'playlist-remove') removed.push(args[0]);
+        if (name === 'playlist-remove') {
+          removed.push(args[0]);
+          if (playlist.entries) {
+            playlist.entries.splice(Number(args[0]), 1);
+            playlist.count--;
+          }
+        }
       },
       ...mpv,
     },
@@ -84,7 +97,7 @@ async function play(harness, episodeId = 'E1') {
 
 test('the next episode in the season is queued after the current one', async () => {
   const harness = createHarness({
-    seasons: { S1: { Items: [episode(2), episode(1), episode(3)] } },
+    seasons: { S1: { Items: [episode(1), episode(2), episode(3)] } },
   });
 
   await play(harness);
@@ -122,8 +135,8 @@ test('after the last episode of a season the next season starts', async () => {
       S1: { Items: [episode(1)] },
       S2: {
         Items: [
-          episode(5, { Id: 'S2E5', Name: 'Return' }),
           episode(4, { Id: 'S2E4', Name: 'Back' }),
+          episode(5, { Id: 'S2E5', Name: 'Return' }),
         ],
       },
     },
@@ -323,9 +336,10 @@ test('an episode without a season number is labelled season 1', async () => {
     seasons: { S1: { Items: [episode(1), episode(2)] } },
   });
 
-  await play(harness);
+  // Not in the season list: its missing IndexNumber counts as episode 0, so
+  // the first episode is next.
+  await play(harness, 'unlisted');
 
-  // No IndexNumber counts as episode 0, so the first episode is next
   assert.equal(harness.loadfiles[0][3], mediaTitleOption('Show S01E01 - Episode 1'));
 });
 
@@ -340,33 +354,211 @@ test('notifications announce the queued episode', async () => {
   assert.deepEqual(harness.osd, ['Up next: Show S01E02 - Episode 2']);
 });
 
-test('stale entries after the current one are removed before queuing', async () => {
+test('a next episode queued earlier is replaced, not queued twice', async () => {
   const harness = createHarness({
-    playlist: { count: 4, pos: 1 },
+    playlist: { count: 1, pos: 0, entries: ['E1-url'] },
+    seasons: { S1: { Items: [episode(1), episode(2), episode(3)] } },
+  });
+
+  await play(harness);
+  // Played again (e.g. reopened from IINA's history) with E2 still queued,
+  // but now with a different next episode.
+  harness.manager.resetForNewFile('other');
+  await play(harness, 'E2');
+
+  assert.deepEqual(harness.removed, ['1']);
+  assert.deepEqual(harness.playlist.entries, [
+    'E1-url',
+    `${SERVER}/Videos/E3/stream?static=true&ApiKey=key`,
+  ]);
+});
+
+test("the viewer's own playlist plays as built: nothing removed, nothing pushed in front", async () => {
+  const harness = createHarness({
+    playlist: { count: 3, pos: 0, entries: ['E1-url', 'a.mkv', `${SERVER}/Videos/E7/stream`] },
     seasons: { S1: { Items: [episode(1), episode(2)] } },
   });
 
   await play(harness);
 
-  assert.deepEqual(harness.removed, ['3', '2']);
-  assert.equal(harness.loadfiles.length, 1);
+  assert.deepEqual(harness.removed, []);
+  assert.deepEqual(harness.loadfiles, []);
+  assert.equal(harness.manager.isQueued(), false);
 });
 
-test('a failing playlist removal does not stop the episode from being queued', async () => {
+test('an unreadable playlist entry after the current one is left alone', async () => {
   const harness = createHarness({
-    playlist: { count: 3, pos: 0 },
+    playlist: { count: 2, pos: 0 },
     seasons: { S1: { Items: [episode(1), episode(2)] } },
-    mpv: {
-      command(name, args) {
-        if (name === 'playlist-remove') throw new Error('busy');
-        if (name === 'loadfile') harness.loadfiles.push([...args]);
+  });
+
+  await play(harness);
+
+  assert.deepEqual(harness.loadfiles, []);
+});
+
+test('an episode the viewer already put next is not queued again', async () => {
+  const harness = createHarness({
+    playlist: { count: 2, pos: 0, entries: ['E1-url', `${SERVER}/Items/E2/Download?api_key=x`] },
+    seasons: { S1: { Items: [episode(1), episode(2)] } },
+  });
+
+  await play(harness);
+
+  assert.deepEqual(harness.loadfiles, []);
+  assert.equal(harness.manager.isQueued(), true);
+});
+
+test('a special shown inside a season keeps its place and its own label', async () => {
+  const harness = createHarness({
+    prefs: { set_video_title: true },
+    seasons: {
+      // Airing order, as Jellyfin sends it: the special airs after E1.
+      S1: {
+        Items: [
+          episode(1, { ParentIndexNumber: 1 }),
+          episode(3, { Id: 'SP3', Name: 'Special', ParentIndexNumber: 0 }),
+          episode(2, { ParentIndexNumber: 1 }),
+        ],
       },
     },
   });
 
   await play(harness);
 
+  assert.equal(harness.loadfiles[0][3], mediaTitleOption('Show S00E03 - Special'));
+});
+
+test('after a special played from inside a season, that season continues', async () => {
+  const metadata = {
+    E1: { SeasonId: 'S1', ParentIndexNumber: 1, IndexNumber: 1 },
+    SP3: { SeasonId: 'specials', ParentIndexNumber: 0, IndexNumber: 3 },
+  };
+  const harness = createHarness({
+    metadata: async (serverBase, itemId) => ({
+      Type: 'Episode',
+      SeriesId: 'series',
+      SeriesName: 'Show',
+      ...metadata[itemId],
+    }),
+    seasons: {
+      S1: {
+        Items: [
+          episode(1, { ParentIndexNumber: 1 }),
+          episode(3, { Id: 'SP3', ParentIndexNumber: 0 }),
+          episode(2, { ParentIndexNumber: 1 }),
+        ],
+      },
+      specials: { Items: [episode(3, { Id: 'SP3' }), episode(4, { Id: 'SP4' })] },
+    },
+  });
+
+  await play(harness, 'E1');
+  harness.playlist.pos = 1; // SP3 is playing now
+  await play(harness, 'SP3');
+
+  assert.match(harness.loadfiles[1][0], /\/Videos\/E2\//);
+});
+
+test('a season with nothing playable is skipped on the way to the next one', async () => {
+  const harness = createHarness({
+    seasons: {
+      S1: { Items: [episode(1)] },
+      S2: { Items: [episode(1, { Id: 'S2E1', MediaSources: [] })] },
+      S3: { Items: [episode(1, { Id: 'S3E1', ParentIndexNumber: 3 })] },
+    },
+    seasonList: {
+      Items: [
+        { Id: 'S1', Name: 'Season 1', IndexNumber: 1 },
+        { Id: 'S2', Name: 'Season 2', IndexNumber: 2 },
+        { Id: 'S3', Name: 'Season 3', IndexNumber: 3 },
+      ],
+    },
+  });
+
+  await play(harness);
+
   assert.equal(harness.loadfiles.length, 1);
+  assert.match(harness.loadfiles[0][0], /\/Videos\/S3E1\//);
+});
+
+test('the last special does not continue into season 1', async () => {
+  const harness = createHarness({
+    metadata: {
+      Type: 'Episode',
+      SeriesId: 'series',
+      SeasonId: 'S0',
+      ParentIndexNumber: 0,
+      IndexNumber: 1,
+    },
+    seasons: { S0: { Items: [episode(1)] }, S1: { Items: [episode(1, { Id: 'S1E1' })] } },
+    seasonList: {
+      Items: [
+        { Id: 'S0', Name: 'Specials', IndexNumber: 0 },
+        { Id: 'S1', Name: 'Season 1', IndexNumber: 1 },
+      ],
+    },
+  });
+
+  await play(harness);
+
+  assert.equal(harness.loadfiles.length, 0);
+});
+
+test('a lookup still running when its file ends queues nothing', async () => {
+  const pending = [];
+  const harness = createHarness({
+    http: {
+      get: (url) =>
+        new Promise((resolve) => {
+          pending.push(() => resolve({ data: { Items: [episode(1), episode(2)] } }));
+          harness.requests.push(url);
+        }),
+    },
+  });
+
+  harness.manager.resetForNewFile('E1');
+  harness.manager.setupAutoplayForEpisode(SERVER, 'E1', 'key');
+  await flush();
+
+  // The episode ends and a local file plays before the episode list arrives.
+  harness.manager.cancelPendingSetup();
+  pending[0]();
+  await flush();
+
+  assert.deepEqual(harness.loadfiles, []);
+  assert.deepEqual(harness.removed, []);
+});
+
+test('a failing playlist removal still leaves the next episode queued', async () => {
+  const entries = ['E1-url'];
+  const loads = [];
+  let failRemoval = false;
+  const harness = createHarness({
+    seasons: { S1: { Items: [episode(1), episode(2)] } },
+    mpv: {
+      getNumber: (name) => (name === 'playlist-count' ? entries.length : 0),
+      getString: (name) => entries[Number(/^playlist\/(\d+)\//.exec(name)[1])],
+      command(name, args) {
+        if (name === 'playlist-remove') {
+          if (failRemoval) throw new Error('busy');
+          entries.splice(Number(args[0]), 1);
+        }
+        if (name === 'loadfile') {
+          loads.push(args[0]);
+          entries.splice(1, 0, args[0]);
+        }
+      },
+    },
+  });
+
+  await play(harness);
+  failRemoval = true;
+  harness.manager.resetForNewFile('other');
+  await play(harness);
+
+  // The stale E2 could not be removed, but it is the next episode anyway.
+  assert.equal(loads.length, 1);
   assert.equal(harness.manager.isQueued(), true);
 });
 

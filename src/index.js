@@ -147,7 +147,7 @@ const {
   log: debugLog,
 });
 
-const { setupAutoplayForEpisode, resetForNewFile, clearQueuedFlag, isQueued } =
+const { setupAutoplayForEpisode, cancelPendingSetup, resetForNewFile, clearQueuedFlag, isQueued } =
   createAutoplayManager({
     http,
     mpv,
@@ -802,6 +802,7 @@ event.on('mpv.pause.changed', handlePauseChange);
 event.on('mpv.end-file', () => {
   invalidatePendingResults();
   forgetItemRequests();
+  cancelPendingSetup();
   const queuedForAutoplay = isQueued();
   const isReplacingPlayback = consumeReplacementGuard();
   debugLog(
