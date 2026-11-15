@@ -82,6 +82,11 @@ function createConnectingClient() {
   });
   Object.assign(client, {
     homeLoads: 0,
+    mediaResets: 0,
+    clearAllMediaContent() {
+      this.mediaResets++;
+    },
+    hideMainContent() {},
     updateServerStatus() {},
     hideLoginForm() {},
     showMainContent() {},

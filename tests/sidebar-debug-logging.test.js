@@ -47,3 +47,19 @@ test('plugin sends the debug_logging preference with every client identity', () 
   assert.match(source, /debugLogging: Boolean\(preferences\.get\('debug_logging'\)\)/);
   assert.doesNotMatch(source, /postMessage\('client-identity', getClientIdentity\(\)\)/);
 });
+
+test('the Quick Connect secret is redacted from logged request URLs', () => {
+  const { logged, handlers } = loadSidebar();
+  handlers['client-identity']({ deviceId: 'test-device', debugLogging: true });
+  logged.length = 0;
+
+  // The poll is logged by the sidebar's fetch wrapper as a request line.
+  handlers['client-identity']({
+    deviceId: 'GET request to: https://jf/QuickConnect/Connect?secret=0123456789abcdef',
+    debugLogging: true,
+  });
+
+  assert.ok(logged.length > 0);
+  assert.ok(logged.every((line) => !line.includes('0123456789abcdef')));
+  assert.ok(logged.some((line) => line.includes('secret=[redacted]')));
+});

@@ -13,7 +13,7 @@ let debugLoggingEnabled = false;
 
 // Credentials travel in URLs (ApiKey=...) and in the MediaBrowser
 // Authorization header (Token="..."). Strip them from anything we log.
-const SECRET_QUERY_PARAM = /([?&](?:api_key|apikey|api-key|x-emby-token)=)[^&\s"']+/gi;
+const SECRET_QUERY_PARAM = /([?&](?:api_key|apikey|api-key|x-emby-token|secret)=)[^&\s"']+/gi;
 const SECRET_TOKEN_FIELD = /((?:token|accesstoken|api_key)"?\s*[:=]\s*"?)[A-Za-z0-9._-]{8,}/gi;
 
 function redactSecrets(value) {

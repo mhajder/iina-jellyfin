@@ -1,4 +1,7 @@
 window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(debugLog) {
+  // How long a server URL typed without a scheme may take to answer over HTTPS
+  const HTTPS_PROBE_TIMEOUT_MS = 5000;
+
   // The sidebar's HTTP client resolves for every HTTP status and throws only
   // when the request never got an answer, always with status 0. The browser's
   // own message for that ("Load failed" in IINA's WebKit, "Failed to fetch"
@@ -99,12 +102,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
     adoptStoredServerId() {
       if (!this.currentServer || this.currentServer.serverId) return;
 
-      const url = String(this.currentServer.url || '').replace(/\/$/, '');
-      const stored = this.servers.find(
-        (server) =>
-          server.serverUrl &&
-          server.serverUrl.replace(/\/$/, '') === url &&
-          server.userId === this.currentServer.userId
+      const stored = this.servers.find((server) =>
+        this.isSameServerEntry(server, this.currentServer.url, this.currentServer.userId)
       );
       if (stored) {
         this.currentServer.serverId = stored.id;
@@ -168,7 +167,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       this.initialAutoConnectDone = true;
 
       this.requestSwitch(serverId);
-      this.connectToServer(server);
+      this.connectToServer(server, { ownSwitch: true });
       this.renderServerList();
     },
 
@@ -272,7 +271,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
       }
     },
 
-    async connectToServer(serverData) {
+    /**
+     * Options: ownSwitch for a server the user picked in this view. Only then
+     * does a failure point the plugin back at the server still connected; a
+     * switch made in the other view stays that view's choice.
+     */
+    async connectToServer(serverData, { ownSwitch = false } = {}) {
       // Only the latest attempt may update the view: a slower response for a
       // server the user has since switched away from must not win.
       const requestId = (this.connectRequestCounter = (this.connectRequestCounter || 0) + 1);
@@ -282,6 +286,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         return true;
       };
       this.connectingServerId = serverData.id || serverData.serverId || null;
+      // Any connection attempt replaces the initial auto-connect.
+      this.initialAutoConnectDone = true;
 
       try {
         debugLog('Connecting to server: ' + serverData.serverUrl);
@@ -293,6 +299,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           },
         });
         if (isStale()) return;
+        let failedStatus = response.status;
 
         if (response.status === 200 && response.data) {
           const userResponse = await this.getHttpClient().get(`${serverData.serverUrl}/Users/Me`, {
@@ -301,8 +308,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             },
           });
           if (isStale()) return;
+          failedStatus = userResponse.status;
 
           if (userResponse.status === 200 && userResponse.data) {
+            // Lists, selections and pickers on screen hold the previous
+            // server's items, whose ids mean nothing on this one.
+            this.resetMediaView();
             this.currentServer = {
               name: response.data.ServerName || serverData.serverName || serverData.serverUrl,
               url: serverData.serverUrl,
@@ -311,6 +322,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
               // Stored server entries carry "id"; session payloads sent to the
               // webview carry "serverId". Both reach this function.
               serverId: serverData.id || serverData.serverId,
+              jellyfinServerId: response.data.Id || null,
+              version: response.data.Version || null,
             };
 
             this.currentUser = userResponse.data;
@@ -338,18 +351,59 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           }
         }
 
-        debugLog('Token invalid for server, prompting re-login');
-        this.updateServerStatus('Session expired - please login again', 'error');
-        this.showLoginFormWithServer(serverData.serverUrl);
+        // Only a rejected token means signing in again. Anything else (a
+        // server error, a proxy page) says nothing about the session.
+        if (failedStatus === 401 || failedStatus === 403) {
+          debugLog('Token invalid for server, prompting re-login');
+          this.reportConnectFailure(serverData, 'Session expired - please login again', ownSwitch);
+          this.showLoginFormWithServer(serverData.serverUrl);
+        } else {
+          debugLog(`Connection failed with status ${failedStatus}`);
+          this.reportConnectFailure(
+            serverData,
+            `Connection failed - server returned ${failedStatus === 200 ? 'no data' : failedStatus}`,
+            ownSwitch
+          );
+        }
       } catch (error) {
         if (isStale()) return;
         debugLog('Connection failed: ' + error.message);
-        this.updateServerStatus('Connection failed - check server', 'error');
+        this.reportConnectFailure(serverData, 'Connection failed - check server', ownSwitch);
       } finally {
         if (requestId === this.connectRequestCounter) {
           this.connectingServerId = null;
         }
       }
+    },
+
+    /**
+     * A connection that failed while another server is still connected
+     * leaves the view on that server, so the plugin's active server is
+     * pointed back at it too. Otherwise the sidebar would browse one server
+     * while the plugin, and the other view, use the one that failed.
+     */
+    reportConnectFailure(serverData, message, ownSwitch = false) {
+      const targetId = serverData.id || serverData.serverId || null;
+      const stay = this.currentUser ? this.currentServer : null;
+      if (!stay || (targetId && stay.serverId === targetId)) {
+        this.updateServerStatus(message, 'error');
+        return;
+      }
+
+      const stayId = stay.serverId;
+      if (ownSwitch && stayId && this.servers.some((server) => server.id === stayId)) {
+        debugLog(`Staying on server ${stayId} after the failed connection`);
+        this.activeServerId = stayId;
+        this.requestSwitch(stayId);
+        this.renderServerList();
+      }
+      this.updateServerStatus(`${message} (still connected to ${stay.name})`, 'error');
+    },
+
+    /** Drop everything shown for the previous server or session. */
+    resetMediaView() {
+      this.clearAllMediaContent();
+      this.hideMainContent();
     },
 
     showLoginFormWithServer(serverUrl) {
@@ -458,27 +512,52 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
      * and the next window silently auto-connects again.
      */
     logoutActiveServer() {
-      const serverId = this.currentServer?.serverId || this.activeServerId;
+      // A sign-in only gets its stored id once the plugin's list comes back.
+      // Until then the active id still names the server used before, so the
+      // connected server is identified by its URL and user instead.
+      this.adoptStoredServerId();
+      const connected = this.currentServer;
+      const serverId = connected ? connected.serverId : this.activeServerId;
 
       if (typeof iina !== 'undefined' && iina.postMessage) {
         if (serverId) {
           debugLog(`Removing stored credentials for server: ${serverId}`);
           iina.postMessage('remove-server', { serverId });
           this.servers = this.servers.filter((server) => server.id !== serverId);
+        } else if (connected) {
+          debugLog(`Removing stored credentials for ${connected.url} by URL`);
+          iina.postMessage('remove-server', {
+            serverUrl: connected.url,
+            userId: connected.userId || '',
+          });
+          this.servers = this.servers.filter(
+            (server) => !this.isSameServerEntry(server, connected.url, connected.userId)
+          );
         } else {
-          // No id to target (e.g. legacy session) — clear the stored session so
-          // the token is not left behind.
-          debugLog('No server id for the active connection, clearing stored session');
-          iina.postMessage('clear-session');
-          this.servers = [];
+          debugLog('No connected or active server, no credentials to remove');
         }
       }
 
       this.disconnectFromServer();
     },
 
+    isSameServerEntry(server, url, userId) {
+      const base = (value) =>
+        String(value || '')
+          .replace(/\/+$/, '')
+          .toLowerCase();
+      return (
+        Boolean(server.serverUrl) &&
+        base(server.serverUrl) === base(url) &&
+        (server.userId || '') === (userId || '')
+      );
+    },
+
     disconnectFromServer() {
       debugLog('Disconnecting from current server');
+      // A disconnected view stays so until the user picks a server; the next
+      // server list must not auto-connect it to another one.
+      this.initialAutoConnectDone = true;
       this.cancelPendingConnect();
       this.currentUser = null;
       this.currentServer = null;
@@ -566,17 +645,28 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         return;
       }
 
-      let normalizedUrl;
-      try {
-        normalizedUrl = this.normalizeServerUrl(serverUrl);
-      } catch (error) {
-        errorEl.textContent = error.message;
+      // Enter in the URL field bypasses the disabled button: a second start
+      // still in flight would race this one for the code shown.
+      if (this.qcStarting) {
+        debugLog('Quick Connect already started, ignoring');
         return;
       }
 
       const startBtn = document.getElementById('qcStartBtn');
+      this.qcStarting = true;
       startBtn.disabled = true;
       startBtn.textContent = 'Checking...';
+
+      let normalizedUrl;
+      try {
+        normalizedUrl = await this.resolveServerUrl(serverUrl);
+      } catch (error) {
+        errorEl.textContent = error.message;
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Quick Connect';
+        this.qcStarting = false;
+        return;
+      }
 
       try {
         const httpClient = this.getHttpClient();
@@ -634,6 +724,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         errorEl.textContent = 'Failed to start Quick Connect. Check your server URL.';
         startBtn.disabled = false;
         startBtn.textContent = 'Start Quick Connect';
+      } finally {
+        this.qcStarting = false;
       }
     },
 
@@ -664,7 +756,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         try {
           const httpClient = this.getHttpClient();
           const response = await httpClient.get(
-            `${this.qcServerUrl}/QuickConnect/Connect?secret=${this.qcSecret}`
+            `${this.qcServerUrl}/QuickConnect/Connect?secret=${encodeURIComponent(this.qcSecret)}`
           );
 
           debugLog('Quick Connect poll response', {
@@ -744,10 +836,14 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           const user = response.data.User;
 
           let serverName = qcServerUrl;
+          let publicInfo = {};
           try {
             const infoResponse = await httpClient.get(`${qcServerUrl}/System/Info/Public`);
-            if (infoResponse.data && infoResponse.data.ServerName) {
-              serverName = infoResponse.data.ServerName;
+            publicInfo =
+              (infoResponse.data && typeof infoResponse.data === 'object' && infoResponse.data) ||
+              {};
+            if (publicInfo.ServerName) {
+              serverName = publicInfo.ServerName;
             }
           } catch (infoError) {
             debugLog('Could not get server info: ' + infoError);
@@ -759,11 +855,15 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           }
 
           this.cancelConnectsStartedBefore(connectsAtStart);
+          this.initialAutoConnectDone = true;
+          this.resetMediaView();
           this.currentServer = {
             name: serverName,
             url: qcServerUrl,
             userId: user.Id,
             accessToken: accessToken,
+            jellyfinServerId: publicInfo.Id || response.data.ServerId || null,
+            version: publicInfo.Version || null,
           };
           this.currentUser = user;
 
@@ -827,21 +927,30 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         errorEl.textContent = 'Please fill in all fields';
         return;
       }
-      const connectsAtStart = this.connectRequestCounter || 0;
 
-      let normalizedUrl;
-      try {
-        normalizedUrl = this.normalizeServerUrl(serverUrl);
-      } catch (error) {
-        errorEl.textContent = error.message || 'Invalid server URL';
+      // Enter in a field bypasses the disabled button. A second sign-in with
+      // the same device id makes Jellyfin revoke the first token, and the
+      // slower reply could store the revoked one.
+      if (this.loginInFlight) {
+        debugLog('Login already in progress, ignoring');
         return;
       }
-      debugLog('Normalized URL: ' + normalizedUrl);
+      this.loginInFlight = true;
+      const connectsAtStart = this.connectRequestCounter || 0;
 
       try {
         document.getElementById('loginBtn').disabled = true;
         document.getElementById('loginBtn').textContent = 'Logging in...';
         errorEl.textContent = '';
+
+        let normalizedUrl;
+        try {
+          normalizedUrl = await this.resolveServerUrl(serverUrl);
+        } catch (error) {
+          errorEl.textContent = error.message || 'Invalid server URL';
+          return;
+        }
+        debugLog('Normalized URL: ' + normalizedUrl);
 
         debugLog('Starting authentication...');
         const authResult = await this.authenticateUser(normalizedUrl, username, password);
@@ -858,11 +967,15 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
           debugLog('Authentication successful');
 
           this.cancelConnectsStartedBefore(connectsAtStart);
+          this.initialAutoConnectDone = true;
+          this.resetMediaView();
           this.currentServer = {
             name: authResult.serverName || normalizedUrl,
             url: normalizedUrl,
             userId: authResult.user.Id,
             accessToken: authResult.accessToken,
+            jellyfinServerId: authResult.jellyfinServerId || null,
+            version: authResult.version || null,
           };
 
           this.currentUser = authResult.user;
@@ -888,6 +1001,7 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         debugLog('Login error: ' + error);
         errorEl.textContent = 'Connection failed. Please check your server URL.';
       } finally {
+        this.loginInFlight = false;
         document.getElementById('loginBtn').disabled = false;
         document.getElementById('loginBtn').textContent = 'Login';
       }
@@ -903,7 +1017,12 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         throw new Error('Server URL cannot be empty');
       }
 
-      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+      // The scheme is matched without case ("HTTPS://") and written in
+      // lowercase. Any other scheme is rejected below rather than prefixed.
+      const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(normalized);
+      if (scheme) {
+        normalized = scheme[1].toLowerCase() + normalized.slice(scheme[1].length);
+      } else {
         normalized = 'http://' + normalized;
       }
 
@@ -912,7 +1031,50 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         throw new Error('Invalid server URL format');
       }
 
-      return normalized.replace(/\/$/, '');
+      return normalized.replace(/\/+$/, '');
+    },
+
+    /**
+     * The URL to sign in at. Without a scheme, HTTPS is tried first and plain
+     * HTTP only when no Jellyfin answers over HTTPS in time, so a server with
+     * a trusted certificate gets the password encrypted. One with a
+     * self-signed certificate fails the check and gets plain HTTP, as before;
+     * typing https:// avoids that.
+     */
+    async resolveServerUrl(input) {
+      const trimmed = String(input || '').trim();
+      if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+        return this.normalizeServerUrl(trimmed);
+      }
+
+      const httpsUrl = this.normalizeServerUrl(`https://${trimmed}`);
+      // A firewall that drops port 443 must not hold the login for the
+      // browser's own timeout.
+      let timer = null;
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), HTTPS_PROBE_TIMEOUT_MS);
+      });
+      try {
+        const response = await Promise.race([
+          this.getHttpClient().get(`${httpsUrl}/System/Info/Public`),
+          timeout,
+        ]);
+        if (
+          response &&
+          response.status === 200 &&
+          response.data &&
+          typeof response.data === 'object'
+        ) {
+          debugLog(`${httpsUrl} answers over HTTPS`);
+          return httpsUrl;
+        }
+      } catch {
+        // No HTTPS on this server
+      } finally {
+        clearTimeout(timer);
+      }
+      debugLog(`No Jellyfin over HTTPS at ${httpsUrl}, using HTTP`);
+      return this.normalizeServerUrl(`http://${trimmed}`);
     },
 
     async authenticateUser(serverUrl, username, password) {
@@ -979,10 +1141,14 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
         if (response.data && response.data.AccessToken) {
           debugLog('Authentication successful');
           let serverName = serverUrl;
+          let publicInfo = {};
           try {
             const infoResponse = await httpClient.get(`${serverUrl}/System/Info/Public`);
-            if (infoResponse.data && infoResponse.data.ServerName) {
-              serverName = infoResponse.data.ServerName;
+            publicInfo =
+              (infoResponse.data && typeof infoResponse.data === 'object' && infoResponse.data) ||
+              {};
+            if (publicInfo.ServerName) {
+              serverName = publicInfo.ServerName;
             }
           } catch (infoError) {
             debugLog('Could not get server info: ' + infoError);
@@ -993,6 +1159,8 @@ window.createSidebarAuthServerMethods = function createSidebarAuthServerMethods(
             user: response.data.User,
             accessToken: response.data.AccessToken,
             serverName: serverName,
+            jellyfinServerId: publicInfo.Id || response.data.ServerId || null,
+            version: publicInfo.Version || null,
           };
         }
 

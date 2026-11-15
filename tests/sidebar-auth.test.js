@@ -122,12 +122,19 @@ function createSidebar({ respond = () => ({ status: 404, data: '' }), identity }
   const posted = [];
   const requests = [];
   const calls = [];
+  const timeouts = [];
   const context = vm.createContext({
     window: {},
     document: dom.document,
     iina: { postMessage: (name, data) => posted.push({ name, data }) },
     setInterval: intervals.setInterval,
     clearInterval: intervals.clearInterval,
+    // Timeouts are kept but never fire unless a test runs them.
+    setTimeout: (callback) => {
+      timeouts.push(callback);
+      return timeouts.length;
+    },
+    clearTimeout() {},
   });
   runScript(AUTH_METHODS, context);
   const methods = context.window.createSidebarAuthServerMethods(() => {});
@@ -166,7 +173,7 @@ function createSidebar({ respond = () => ({ status: 404, data: '' }), identity }
   };
 
   const messages = (name) => posted.filter((m) => m.name === name).map((m) => plain(m.data ?? {}));
-  return { sidebar, dom, intervals, posted, messages, requests, calls };
+  return { sidebar, dom, intervals, posted, messages, requests, calls, timeouts };
 }
 
 function fillLogin(dom, { server = 'https://jf.example.com', user = 'ann', password = 'pw' }) {
@@ -284,7 +291,12 @@ test('password login posts the credentials and stores the new session', async ()
     url: 'http://jf.local:8096',
     userId: 'user-1',
     accessToken: 'new-token',
+    jellyfinServerId: null,
+    version: null,
   });
+  // Without a scheme, HTTPS is tried before the password goes anywhere.
+  assert.equal(requests[0].url, 'https://jf.local:8096/System/Info/Public');
+  assert.ok(requests.slice(1).every((request) => request.url.startsWith('http://')));
   assert.equal(sidebar.currentUser.Name, 'Ann');
   assert.equal(dom.get('serverStatus').textContent, 'Connected as Ann');
   assert.equal(dom.get('serverStatus').className, 'server-status connected');
@@ -806,7 +818,7 @@ test('logging out forgets the connected server and resets the view', () => {
   );
 });
 
-test('logging out of a session without a stored id clears the stored session', () => {
+test('logging out of a session without a stored id removes it by URL, not every server', () => {
   const { sidebar, dom, posted } = createSidebar();
   sidebar.currentServer = { name: 'Legacy', url: 'https://jf.example.com' };
   sidebar.currentUser = { Name: 'Ann' };
@@ -814,8 +826,8 @@ test('logging out of a session without a stored id clears the stored session', (
   sidebar.logoutActiveServer();
 
   assert.deepEqual(
-    posted.map((m) => m.name),
-    ['clear-session']
+    posted.map((m) => [m.name, plain(m.data)]),
+    [['remove-server', { serverUrl: 'https://jf.example.com', userId: '' }]]
   );
   assert.equal(sidebar.currentServer, null);
   assert.equal(dom.get('savedServerList').style.display, 'none');
@@ -1109,4 +1121,183 @@ test('a switch made in the other view is followed here', async () => {
   sidebar.handleServerSwitched(null);
   sidebar.handleServerSwitched({});
   assert.equal(requests.length, 2);
+});
+
+// --- Fixes: URL scheme, double submit, disconnect and failed switches -------
+
+test('a scheme in capitals is recognised and written in lowercase', () => {
+  const { sidebar } = createSidebar();
+
+  assert.equal(sidebar.normalizeServerUrl('HTTPS://JF.example.com/'), 'https://JF.example.com');
+  assert.equal(sidebar.normalizeServerUrl('Http://jf.local:8096'), 'http://jf.local:8096');
+  assert.throws(() => sidebar.normalizeServerUrl('ftp://jf.local'), {
+    message: 'Invalid server URL format',
+  });
+});
+
+test('a server URL without a scheme signs in over HTTPS when the server answers there', async () => {
+  const { sidebar, dom, requests } = createSidebar({
+    respond(method, url) {
+      if (url === 'https://jf.example.com/System/Info/Public') {
+        return { status: 200, data: { ServerName: 'Home', Version: '10.10.7', Id: 'sid' } };
+      }
+      if (method === 'POST' && url === 'https://jf.example.com/Users/AuthenticateByName') {
+        return { status: 200, data: signedIn };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    },
+  });
+  fillLogin(dom, { server: 'jf.example.com' });
+
+  await sidebar.login();
+
+  assert.ok(requests.every((request) => request.url.startsWith('https://')));
+  assert.equal(sidebar.currentServer.url, 'https://jf.example.com');
+  assert.equal(sidebar.currentServer.version, '10.10.7');
+  assert.equal(sidebar.currentServer.jellyfinServerId, 'sid');
+});
+
+test('pressing Enter again while signing in sends no second login', async () => {
+  let release;
+  const { sidebar, dom, requests } = createSidebar({
+    respond(method, url) {
+      if (method === 'POST') return new Promise((resolve) => (release = resolve));
+      if (url.endsWith('/System/Info/Public')) return { status: 200, data: {} };
+      throw new Error(`unexpected ${method} ${url}`);
+    },
+  });
+  fillLogin(dom, {});
+
+  const first = sidebar.login();
+  await flush();
+  await sidebar.login();
+  release({ status: 200, data: signedIn });
+  await first;
+
+  assert.equal(requests.filter((request) => request.method === 'POST').length, 1);
+  assert.equal(sidebar.loginInFlight, false);
+});
+
+test('signing in clears the lists of the server shown before', async () => {
+  const { sidebar, dom, calls } = createSidebar({
+    respond(method, url) {
+      if (url.endsWith('/System/Info/Public')) return { status: 200, data: {} };
+      if (method === 'POST') return { status: 200, data: signedIn };
+      throw new Error(`unexpected ${method} ${url}`);
+    },
+  });
+  fillLogin(dom, {});
+
+  await sidebar.login();
+
+  assert.ok(calls.indexOf('clearAllMediaContent') < calls.indexOf('showMainContent'));
+});
+
+test('Disconnect right after a sign-in removes that sign-in, not the active server', () => {
+  const { sidebar, messages } = createSidebar();
+  sidebar.servers = [serverA];
+  sidebar.activeServerId = 'srv-a';
+  // Signed in to another server; the plugin has not sent its stored id yet.
+  sidebar.currentServer = { name: 'C', url: 'https://c.example.com', userId: 'user-c' };
+  sidebar.currentUser = { Name: 'Cy' };
+
+  sidebar.logoutActiveServer();
+
+  assert.deepEqual(messages('remove-server'), [
+    { serverUrl: 'https://c.example.com', userId: 'user-c' },
+  ]);
+  assert.deepEqual(
+    sidebar.servers.map((server) => server.id),
+    ['srv-a']
+  );
+});
+
+test('after Disconnect the next server list does not auto-connect', () => {
+  const { sidebar, requests } = createSidebar();
+  sidebar.currentServer = { name: 'A', url: serverA.serverUrl, serverId: 'srv-a' };
+  sidebar.currentUser = { Name: 'Ann' };
+
+  sidebar.logoutActiveServer();
+  sidebar.handleServersList({ servers: [serverB], activeServerId: 'srv-b' });
+
+  assert.equal(requests.length, 0);
+  assert.equal(sidebar.currentServer, null);
+});
+
+test('a server error while switching is not reported as an expired session', async () => {
+  const { sidebar, dom, messages } = createSidebar({
+    respond: () => ({ status: 502, data: 'Bad Gateway' }),
+  });
+  sidebar.servers = [serverA, serverB];
+  sidebar.activeServerId = 'srv-a';
+  sidebar.currentServer = { name: 'A', url: serverA.serverUrl, serverId: 'srv-a' };
+  sidebar.currentUser = { Name: 'Ann' };
+
+  sidebar.switchToServer('srv-b');
+  await flush();
+
+  assert.equal(
+    dom.get('serverStatus').textContent,
+    'Connection failed - server returned 502 (still connected to A)'
+  );
+  assert.notEqual(dom.get('loginSection').style.display, 'block');
+  // The plugin's active server follows the view back to A.
+  assert.deepEqual(
+    messages('switch-server').map((message) => message.serverId),
+    ['srv-b', 'srv-a']
+  );
+  assert.equal(sidebar.activeServerId, 'srv-a');
+  assert.equal(sidebar.currentServer.serverId, 'srv-a');
+});
+
+test('a rejected token while switching asks to sign in again and stays on the old server', async () => {
+  const { sidebar, dom, messages } = createSidebar({
+    respond: () => ({ status: 401, data: '' }),
+  });
+  sidebar.servers = [serverA, serverB];
+  sidebar.currentServer = { name: 'A', url: serverA.serverUrl, serverId: 'srv-a' };
+  sidebar.currentUser = { Name: 'Ann' };
+
+  sidebar.switchToServer('srv-b');
+  await flush();
+
+  assert.equal(
+    dom.get('serverStatus').textContent,
+    'Session expired - please login again (still connected to A)'
+  );
+  assert.equal(dom.get('serverUrl').value, serverB.serverUrl);
+  assert.deepEqual(
+    messages('switch-server').map((message) => message.serverId),
+    ['srv-b', 'srv-a']
+  );
+});
+
+test('an HTTPS check that never answers falls back to HTTP after the timeout', async () => {
+  const { sidebar, timeouts } = createSidebar({
+    respond: () => new Promise(() => {}),
+  });
+
+  const resolving = sidebar.resolveServerUrl('jf.local:8096');
+  await flush();
+  timeouts.forEach((callback) => callback());
+
+  assert.equal(await resolving, 'http://jf.local:8096');
+});
+
+test("a failed connect while following the other view's switch keeps the plugin there", async () => {
+  const { sidebar, dom, messages } = createSidebar({
+    respond: () => ({ status: 502, data: 'Bad Gateway' }),
+  });
+  sidebar.servers = [serverA, serverB];
+  sidebar.currentServer = { name: 'A', url: serverA.serverUrl, serverId: 'srv-a' };
+  sidebar.currentUser = { Name: 'Ann' };
+
+  sidebar.handleServerSwitched({ server: serverB, servers: [serverA, serverB] });
+  await flush();
+
+  assert.deepEqual(messages('switch-server'), []);
+  assert.equal(
+    dom.get('serverStatus').textContent,
+    'Connection failed - server returned 502 (still connected to A)'
+  );
 });
